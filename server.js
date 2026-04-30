@@ -3,10 +3,11 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const Database = require('better-sqlite3');
+const path = require('path');
 
 // 1. 初始化数据库 (自动创建 projects.db 文件)
 const db = new Database('./projects.db');
-// 主项目表（保留原有结构）
+// 主项目表
 db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
@@ -20,14 +21,14 @@ db.exec(`
     remarks TEXT
   )
 `);
-// 项目子项（阶段）表（保留原有结构）
+// 项目子项表
 db.exec(`
   CREATE TABLE IF NOT EXISTS project_phases (
     id TEXT PRIMARY KEY,
-    projectId TEXT, -- 关联主项目ID
-    phaseName TEXT, -- 子项名称（如：施工图-水、方案初稿）
-    phaseType TEXT, -- 阶段类型（方案/初步设计/施工图），用于分类展示
-    progress INTEGER DEFAULT 0, -- 子项进度(0-100)
+    projectId TEXT,
+    phaseName TEXT,
+    phaseType TEXT,
+    progress INTEGER DEFAULT 0,
     remarks TEXT,
     FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE
   )
@@ -37,17 +38,29 @@ db.exec(`
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ==========================================
+// 【关键修复】托管前端静态文件
+// ==========================================
+// 确保 index.html 能被访问
+app.use(express.static(path.join(__dirname, '.')));
+
+// 访问根路径 (https://你的域名/) 时直接返回 index.html
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// 工作量权重配置（可自定义，施工图权重更高，贴合设计行业工作量）
+// 工作量权重配置
 const WORK_WEIGHT = {
   "方案": 1.0,
   "初步设计": 1.2,
   "施工图": 1.5
 };
 
-// 默认演示数据（主项目，保留原有）
+// 默认演示数据（主项目）
 const defaultProjects = [
     { id: '1', projectName: '江东新区城市设计', leader: '张建国', designer: '李思思,王明远', startDate: '2025-01-10', endDate: '2025-04-20', actualEndDate: '', progressPercent: 65, remarks: '方案深化阶段，等待业主确认' },
     { id: '2', projectName: '滨江景观桥工程', leader: '陈敏华', designer: '赵一航', startDate: '2025-02-01', endDate: '2025-05-15', actualEndDate: '', progressPercent: 30, remarks: '初设阶段，地勘完成' },
@@ -55,16 +68,13 @@ const defaultProjects = [
     { id: '4', projectName: '轨道交通枢纽改造', leader: '王宏', designer: '吴启航,林芳', startDate: '2024-10-10', endDate: '2025-02-10', actualEndDate: '', progressPercent: 85, remarks: '收尾阶段，超期风险注意' },
     { id: '5', projectName: '海绵城市示范区', leader: '陈敏华', designer: '郑秋怡', startDate: '2025-03-01', endDate: '2025-07-20', actualEndDate: '', progressPercent: 20, remarks: '初步设计' }
 ];
-// 默认子项数据（保留原有）
+// 默认子项数据
 const defaultPhases = [
-    // 项目1的子项
     { id: 'p1-1', projectId: '1', phaseName: '方案阶段', phaseType: '方案', progress: 80, remarks: '已完成初稿，待评审' },
     { id: 'p1-2', projectId: '1', phaseName: '初步设计阶段', phaseType: '初步设计', progress: 60, remarks: '正在细化指标' },
-    // 项目2的子项
     { id: 'p2-1', projectId: '2', phaseName: '初步设计阶段', phaseType: '初步设计', progress: 30, remarks: '地勘完成，正在出图' },
     { id: 'p2-2', projectId: '2', phaseName: '施工图-结构', phaseType: '施工图', progress: 0, remarks: '未开始' },
     { id: 'p2-3', projectId: '2', phaseName: '施工图-水', phaseType: '施工图', progress: 0, remarks: '未开始' },
-    // 项目3的子项（已完成）
     { id: 'p3-1', projectId: '3', phaseName: '方案阶段', phaseType: '方案', progress: 100, remarks: '验收通过' },
     { id: 'p3-2', projectId: '3', phaseName: '初步设计阶段', phaseType: '初步设计', progress: 100, remarks: '验收通过' },
     { id: 'p3-3', projectId: '3', phaseName: '施工图-结构', phaseType: '施工图', progress: 100, remarks: '验收通过' },
@@ -74,17 +84,14 @@ const defaultPhases = [
 
 // 3. API 接口
 // ------------------------------
-// 原有接口：主项目相关（完整保留）
+// 原有接口：主项目相关
 // ------------------------------
-// 获取所有项目
 app.get('/api/projects', (req, res) => {
   const projects = db.prepare('SELECT * FROM projects').all();
   res.json(projects);
 });
 
-// 初始化数据接口（含子项）
 app.get('/api/init', (req, res) => {
-    // 1. 初始化主项目
     const insertProject = db.prepare(`
         INSERT OR REPLACE INTO projects (id, projectName, leader, designer, startDate, endDate, actualEndDate, progressPercent, remarks)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -93,7 +100,6 @@ app.get('/api/init', (req, res) => {
         insertProject.run(p.id, p.projectName, p.leader, p.designer, p.startDate, p.endDate, p.actualEndDate, p.progressPercent, p.remarks);
     });
 
-    // 2. 初始化子项
     const insertPhase = db.prepare(`
         INSERT OR REPLACE INTO project_phases (id, projectId, phaseName, phaseType, progress, remarks)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -106,15 +112,11 @@ app.get('/api/init', (req, res) => {
     res.json({ success: true, message: "数据已重置为演示数据（含子项）" });
 });
 
-// 新增/更新项目 (覆盖式保存，含子项同步)
 app.post('/api/projects/sync', (req, res) => {
   const { projects, phases } = req.body;
-  
-  // 清空旧数据
   db.prepare('DELETE FROM projects').run();
   db.prepare('DELETE FROM project_phases').run();
   
-  // 批量插入主项目
   if(projects && projects.length > 0) {
       const insertProject = db.prepare(`
         INSERT INTO projects (id, projectName, leader, designer, startDate, endDate, actualEndDate, progressPercent, remarks)
@@ -125,7 +127,6 @@ app.post('/api/projects/sync', (req, res) => {
       });
   }
   
-  // 批量插入子项
   if(phases && phases.length > 0) {
       const insertPhase = db.prepare(`
         INSERT INTO project_phases (id, projectId, phaseName, phaseType, progress, remarks)
@@ -141,22 +142,19 @@ app.post('/api/projects/sync', (req, res) => {
 });
 
 // ------------------------------
-// 原有接口：子项（阶段）相关（完整保留）
+// 原有接口：子项相关
 // ------------------------------
-// 获取某个项目的所有子项
 app.get('/api/projects/:projectId/phases', (req, res) => {
   const { projectId } = req.params;
   const phases = db.prepare('SELECT * FROM project_phases WHERE projectId = ?').all(projectId);
   res.json(phases);
 });
 
-// 获取所有子项
 app.get('/api/projects/all/phases', (req, res) => {
   const phases = db.prepare('SELECT * FROM project_phases').all();
   res.json(phases);
 });
 
-// 新增/更新单个子项
 app.post('/api/phases/save', (req, res) => {
   const phase = req.body;
   const insertOrUpdate = db.prepare(`
@@ -171,7 +169,6 @@ app.post('/api/phases/save', (req, res) => {
   res.json({ success: true });
 });
 
-// 删除单个子项
 app.delete('/api/phases/:id', (req, res) => {
   const { id } = req.params;
   db.prepare('DELETE FROM project_phases WHERE id = ?').run(id);
@@ -180,9 +177,8 @@ app.delete('/api/phases/:id', (req, res) => {
 });
 
 // ------------------------------
-// 【新增】核心接口：工作量统计相关
+// 新增接口：工作量统计相关
 // ------------------------------
-// 1. 负责人工作量详细统计
 app.get('/api/stats/leader', (req, res) => {
   const stats = db.prepare(`
     SELECT 
@@ -198,7 +194,6 @@ app.get('/api/stats/leader', (req, res) => {
     ORDER BY totalProjects DESC
   `).all();
 
-  // 补充完成率、逾期率计算
   const result = stats.map(item => ({
     ...item,
     completeRate: item.totalProjects > 0 ? Math.round((item.completedProjects / item.totalProjects) * 100) : 0,
@@ -208,9 +203,7 @@ app.get('/api/stats/leader', (req, res) => {
   res.json(result);
 });
 
-// 2. 设计师工作量详细统计（自动拆分逗号分隔的多设计师）
 app.get('/api/stats/designer', (req, res) => {
-  // 递归拆分逗号分隔的设计师字段，精准统计单人数据
   const designerStats = db.prepare(`
     WITH split_designers AS (
       SELECT 
@@ -239,9 +232,7 @@ app.get('/api/stats/designer', (req, res) => {
     ORDER BY joinProjects DESC
   `).all();
 
-  // 补充权重化工作量得分、完成率计算
   const result = designerStats.map(item => {
-    // 按阶段计算权重化工作量
     const phaseStats = db.prepare(`
       SELECT phaseType, COUNT(*) as phaseCount
       FROM project_phases
@@ -267,7 +258,6 @@ app.get('/api/stats/designer', (req, res) => {
   res.json(result);
 });
 
-// 3. 设计师分阶段工作量明细
 app.get('/api/stats/designer/:name/phase', (req, res) => {
   const { name } = req.params;
   const phaseDetail = db.prepare(`
@@ -287,7 +277,6 @@ app.get('/api/stats/designer/:name/phase', (req, res) => {
   res.json(phaseDetail);
 });
 
-// 4. 全局工作量汇总统计
 app.get('/api/stats/summary', (req, res) => {
   const summary = db.prepare(`
     SELECT 
@@ -304,7 +293,7 @@ app.get('/api/stats/summary', (req, res) => {
 
 // 4. 启动服务
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => { // 【优化】绑定 0.0.0.0 确保外部可访问
   console.log(`\n✅ 后端服务已启动`);
   console.log(`📡 本地地址: http://localhost:${PORT}`);
   console.log(`💡 首次使用请访问: http://localhost:${PORT}/api/init 初始化数据`);
