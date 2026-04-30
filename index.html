@@ -157,7 +157,7 @@
         <div class="tab-item" data-tab="designer-stats">设计师工作量统计</div>
     </div>
 
-    <!-- Tab1：项目管理页面（核心优化） -->
+    <!-- Tab1：项目管理页面 -->
     <div class="tab-content active" id="project-tab">
         <div class="toolbar">
             <button class="btn btn-primary" id="addProjectBtn">➕ 新增项目</button>
@@ -174,7 +174,7 @@
                         <tr>
                             <th>项目名称</th>
                             <th>负责人</th>
-                            <th>设计师</th>
+                            <th>参与设计师</th>
                             <th>计划结束</th>
                             <th>项目总进度</th>
                             <th>当前阶段</th>
@@ -216,7 +216,7 @@
         </div>
     </div>
 
-    <!-- Tab3：设计师工作量统计 -->
+    <!-- Tab3：设计师工作量统计（和项目管理强关联） -->
     <div class="tab-content" id="designer-stats-tab">
         <div class="toolbar">
             <h2>👨‍💻 设计师工作量明细</h2>
@@ -230,10 +230,10 @@
                             <th>设计师姓名</th>
                             <th class="text-center">参与项目总数</th>
                             <th class="text-center">已完成项目</th>
-                            <th class="text-center">进行中项目</th>
-                            <th class="text-center">逾期项目</th>
-                            <th class="text-center">项目完成率</th>
                             <th class="text-center">负责子项总数</th>
+                            <th class="text-center">已完成子项</th>
+                            <th class="text-center">子项平均进度</th>
+                            <th class="text-center">项目完成率</th>
                             <th class="text-center">工作量得分</th>
                             <th>操作</th>
                         </tr>
@@ -245,7 +245,7 @@
     </div>
 </div>
 
-<!-- 【核心新增】项目详情模态框 -->
+<!-- 项目详情模态框 -->
 <div class="modal" id="projectDetailModal">
     <div class="modal-content">
         <div class="modal-header">
@@ -408,7 +408,7 @@
     </div>
 </div>
 
-<!-- 新增/编辑子项模态框 -->
+<!-- 新增/编辑子项模态框（新增设计师字段，和项目管理关联） -->
 <div class="modal modal-sm" id="phaseModal">
     <div class="modal-content">
         <div class="modal-header">
@@ -418,13 +418,19 @@
         <form id="phaseForm">
             <input type="hidden" id="phaseProjectId">
             <input type="hidden" id="editPhaseId">
-            <div class="form-group">
-                <label>阶段类型 *</label>
-                <select id="phaseType" required>
-                    <option value="方案">方案阶段</option>
-                    <option value="初步设计">初步设计阶段</option>
-                    <option value="施工图">施工图阶段</option>
-                </select>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>阶段类型 *</label>
+                    <select id="phaseType" required>
+                        <option value="方案">方案阶段</option>
+                        <option value="初步设计">初步设计阶段</option>
+                        <option value="施工图">施工图阶段</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>负责设计师 *</label>
+                    <input type="text" id="phaseDesigner" required placeholder="子项负责设计师">
+                </div>
             </div>
             <div class="form-group">
                 <label>子项名称 *</label>
@@ -586,7 +592,7 @@
         tbody.innerHTML = html;
     }
 
-    // 【核心】打开项目详情
+    // 打开项目详情
     async function openProjectDetail(projectId) {
         try {
             const res = await fetch(`${API_URL}/projects/${projectId}`);
@@ -620,7 +626,7 @@
         }
     }
 
-    // 渲染阶段详情
+    // 渲染阶段详情（新增设计师列）
     function renderPhaseDetail(type, phaseList, progress) {
         const idMap = {
             "方案": { progress: 'planPhaseProgress', bar: 'planPhaseBar', list: 'planPhaseList' },
@@ -638,12 +644,13 @@
             return;
         }
         let html = '<table style="width:100%; border-collapse: collapse;">';
-        html += '<thead><tr style="border-bottom: 1px solid #eee;"><th style="width:40%; padding:8px; text-align:left;">子项名称</th><th style="width:20%; padding:8px; text-align:left;">进度</th><th style="width:30%; padding:8px; text-align:left;">备注</th><th style="width:10%; padding:8px; text-align:left;">操作</th></tr></thead>';
+        html += '<thead><tr style="border-bottom: 1px solid #eee;"><th style="width:30%; padding:8px; text-align:left;">子项名称</th><th style="width:15%; padding:8px; text-align:left;">负责设计师</th><th style="width:20%; padding:8px; text-align:left;">进度</th><th style="width:25%; padding:8px; text-align:left;">备注</th><th style="width:10%; padding:8px; text-align:left;">操作</th></tr></thead>';
         html += '<tbody>';
         phaseList.forEach(phase => {
             html += `
             <tr style="border-bottom: 1px solid #f5f5f5;">
                 <td style="padding:8px;">${escapeHtml(phase.phaseName)}</td>
+                <td style="padding:8px;"><span class="status-badge status-gray">${escapeHtml(phase.designer || '-')}</span></td>
                 <td style="padding:8px;">
                     <div class="rate-bar">
                         <span>${phase.progress}%</span>
@@ -671,6 +678,7 @@
         document.getElementById('editPhaseId').value = phase.id;
         document.getElementById('phaseProjectId').value = phase.projectId;
         document.getElementById('phaseType').value = phase.phaseType;
+        document.getElementById('phaseDesigner').value = phase.designer || '';
         document.getElementById('phaseName').value = phase.phaseName;
         document.getElementById('phaseProgress').value = phase.progress;
         document.getElementById('phaseRemarks').value = phase.remarks || '';
@@ -682,7 +690,6 @@
         if (!confirm('确定要删除该子项吗？')) return;
         try {
             await fetch(`${API_URL}/phases/${phaseId}`, { method: 'DELETE' });
-            // 重新加载详情
             openProjectDetail(currentDetailProject.id);
         } catch (e) {
             console.error('删除子项失败', e);
@@ -785,7 +792,7 @@
         }
     }
 
-    // 子项保存
+    // 子项保存（含设计师）
     document.getElementById('phaseForm').addEventListener('submit', async e => {
         e.preventDefault();
         const projectId = document.getElementById('phaseProjectId').value;
@@ -795,6 +802,7 @@
             projectId,
             phaseType: document.getElementById('phaseType').value,
             phaseName: document.getElementById('phaseName').value,
+            designer: document.getElementById('phaseDesigner').value.trim(),
             progress: parseInt(document.getElementById('phaseProgress').value),
             remarks: document.getElementById('phaseRemarks').value
         };
@@ -805,7 +813,6 @@
                 body: JSON.stringify(phaseData)
             });
             document.getElementById('phaseModal').style.display = 'none';
-            // 重新加载详情
             openProjectDetail(projectId);
         } catch (e) {
             console.error('保存子项失败', e);
@@ -819,6 +826,8 @@
         document.getElementById('phaseForm').reset();
         document.getElementById('editPhaseId').value = '';
         document.getElementById('phaseProjectId').value = currentDetailProject.id;
+        // 默认填充项目内的第一个设计师
+        document.getElementById('phaseDesigner').value = currentDetailProject.designer.split(',')[0].trim();
         document.getElementById('phaseModal').style.display = 'flex';
     });
 
@@ -858,7 +867,7 @@
         } catch (e) { console.error('加载负责人统计失败', e); }
     }
 
-    // 设计师统计渲染
+    // 设计师统计渲染（完全来自项目内子项）
     async function renderDesignerStats() {
         try {
             const data = await (await fetch(`${API_URL}/stats/designer`)).json();
@@ -870,8 +879,9 @@
                     <td class="fw-bold">${escapeHtml(item.designer)}</td>
                     <td class="text-center">${item.joinProjects}</td>
                     <td class="text-center">${item.completedProjects}</td>
-                    <td class="text-center">${item.inProgressProjects}</td>
-                    <td class="text-center"><span class="status-badge ${item.overdueProjects > 0 ? 'status-low' : 'status-high'}">${item.overdueProjects}</span></td>
+                    <td class="text-center">${item.totalPhases}</td>
+                    <td class="text-center">${item.completedPhases}</td>
+                    <td class="text-center"><span class="status-badge ${getStatusClass(item.avgPhaseProgress)}">${item.avgPhaseProgress}%</span></td>
                     <td class="text-center">
                         <div class="rate-bar">
                             <span>${item.completeRate}%</span>
@@ -880,7 +890,6 @@
                             </div>
                         </div>
                     </td>
-                    <td class="text-center">${item.totalPhases}</td>
                     <td class="text-center fw-bold" style="color:var(--secondary)">${item.workScore}</td>
                     <td><button class="btn btn-outline btn-sm" onclick="openDesignerDetail('${item.designer}')">查看明细</button></td>
                 </tr>`;
@@ -975,8 +984,8 @@
     };
     document.getElementById('exportDesignerStatsBtn').onclick = async () => {
         const data = await (await fetch(`${API_URL}/stats/designer`)).json();
-        const headers = ['设计师,参与项目数,已完成,进行中,逾期,完成率,子项总数,工作量得分'];
-        const rows = data.map(i => `"${i.designer}",${i.joinProjects},${i.completedProjects},${i.inProgressProjects},${i.overdueProjects},${i.completeRate}%,${i.totalPhases},${i.workScore}`);
+        const headers = ['设计师,参与项目数,已完成项目,负责子项总数,已完成子项,子项平均进度,项目完成率,工作量得分'];
+        const rows = data.map(i => `"${i.designer}",${i.joinProjects},${i.completedProjects},${i.totalPhases},${i.completedPhases},${i.avgPhaseProgress}%,${i.completeRate}%,${i.workScore}`);
         const csv = '\ufeff' + headers.concat(rows).join('\n');
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
         const a = document.createElement('a');
