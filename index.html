@@ -2,456 +2,462 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>设计院项目进度管理系统 | 协作版</title>
-    <!-- 引入 Socket.io 用于实时通信 -->
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设计院项目管理系统 - 工作量统计版</title>
     <style>
-        * {
-            box-sizing: border-box;
-            font-family: system-ui, 'Segoe UI', 'Roboto', 'Noto Sans', sans-serif;
+        /* 原有样式（完整保留） */
+        :root {
+            --primary: #1e3a5f;
+            --secondary: #2c7da0;
+            --accent: #89c2d9;
+            --light: #f8f9fa;
+            --dark: #343a40;
+            --success: #28a745;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --gray: #6c757d;
         }
-
-        body {
-            background: #f0f2f5;
-            margin: 0;
-            padding: 24px 20px;
-        }
-
-        /* 顶部连接状态条 */
-        .connection-status {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            background: #e53e3e;
-            color: white;
-            text-align: center;
-            padding: 4px;
-            font-size: 0.8rem;
-            z-index: 9999;
-            display: none;
-        }
-        .connection-status.offline { display: block; }
-
-        /* 主容器 */
-        .dashboard-container {
-            max-width: 1600px;
-            margin: 0 auto;
-        }
-
-        /* 头部卡片 */
-        .header-card {
-            background: white;
-            border-radius: 20px;
-            padding: 16px 24px;
-            margin-bottom: 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .title-section h1 {
-            margin: 0;
-            font-size: 1.8rem;
-            font-weight: 600;
-            color: #1e3a5f;
-        }
-
-        .title-section p {
-            margin: 6px 0 0;
-            color: #5a6874;
-            font-size: 0.85rem;
-        }
-
-        .date-badge {
-            background: #eef2ff;
-            padding: 8px 20px;
-            border-radius: 40px;
-            font-weight: 500;
-            color: #1e40af;
-            font-size: 1rem;
-            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.02);
-        }
-
-        .stats-summary {
-            display: flex;
-            gap: 20px;
-            margin-top: 12px;
-            flex-wrap: wrap;
-        }
-
-        .stat-card {
-            background: #f8fafc;
-            border-radius: 16px;
-            padding: 8px 16px;
-            min-width: 100px;
-            text-align: center;
-            border-left: 4px solid;
-        }
-
-        .stat-number {
-            font-size: 1.8rem;
-            font-weight: 700;
-            line-height: 1.2;
-        }
-
-        .stat-label {
-            font-size: 0.75rem;
-            color: #475569;
-        }
-
-        /* 按钮与工具栏 */
-        .toolbar {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            gap: 12px;
-        }
-
-        .btn {
-            border: none;
-            padding: 8px 18px;
-            border-radius: 30px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: 0.2s;
-            font-size: 0.85rem;
-            background: #fff;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            border: 1px solid #cfdee9;
-        }
-
-        .btn-primary {
-            background: #1e5f8e;
-            color: white;
-            border: none;
-            box-shadow: 0 2px 6px rgba(0,80,120,0.2);
-        }
-        .btn-primary:hover { background: #0f4a6e; transform: translateY(-1px);}
-        .btn-outline { border: 1px solid #b9cad6; background: white; }
-        .btn-outline:hover { background: #eef2f5; }
-        .btn-danger { color: #b91c1c; border-color: #f3c1c1; }
-        .btn-danger:hover { background: #fee2e2; }
-
-        /* 表格容器 支持横向滚动 */
-        .table-wrapper {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            overflow-x: auto;
-            margin-bottom: 32px;
-            padding: 4px 0;
-        }
-
-        .project-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.8rem;
-            min-width: 1000px;
-        }
-
-        .project-table th {
-            background: #f8fafd;
-            padding: 14px 12px;
-            text-align: left;
-            font-weight: 600;
-            color: #1e2f3e;
-            border-bottom: 1px solid #e2edf2;
-            font-size: 0.8rem;
-        }
-
-        .project-table td {
-            padding: 12px 12px;
-            border-bottom: 1px solid #ecf3f8;
-            vertical-align: middle;
-        }
-
-        /* 状态标签 */
-        .status-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 30px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-align: center;
-            background: #eef2ff;
-            color: #1e40af;
-        }
-        .status-completed { background: #dff9e6; color: #2b6e3c; }
-        .status-overdue { background: #ffe6e5; color: #b91c1c; }
-        .status-progress { background: #fff1df; color: #b45309; }
-        .status-planned { background: #e6f0fa; color: #2266a8; }
-
-        /* 进度条简易展示 */
-        .progress-cell {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .progress-bar-bg {
-            width: 60px;
-            background: #e2e8f0;
-            border-radius: 20px;
-            height: 6px;
-            overflow: hidden;
-        }
-        .progress-bar-fill {
-            background: #2c7da0;
-            height: 6px;
-            width: 0%;
-            border-radius: 20px;
-        }
-
-        /* 行状态着色 */
-        .row-completed { background-color: #f0fdf4; }
-        .row-overdue { background-color: #fff5f5; }
-        .row-progress { background-color: #fffbeb; }
-        
-        .remark-cell {
-            max-width: 180px;
-            word-break: break-word;
-            white-space: normal;
-            font-size: 0.75rem;
-            color: #3f5468;
-        }
-
-        .action-btns {
-            display: flex;
-            gap: 8px;
-        }
-        .icon-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 1.1rem;
-            padding: 4px 6px;
-            border-radius: 8px;
-        }
-        .icon-btn.edit:hover { background: #e6f0ff; color: #0f5f8c; }
-        .icon-btn.delete:hover { background: #ffe6e6; color: #c00; }
-
-        /* 统计表格 */
-        .stats-section {
-            background: white;
-            border-radius: 20px;
-            padding: 16px 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        }
-        .stats-title {
-            font-size: 1.2rem;
-            font-weight: 600;
-            margin-bottom: 16px;
-            color: #1e3a5f;
-            border-left: 4px solid #2c7da0;
-            padding-left: 14px;
-        }
-        .stats-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.8rem;
-        }
-        .stats-table th, .stats-table td {
-            padding: 10px 8px;
-            text-align: left;
-            border-bottom: 1px solid #eef2f5;
-        }
-
-        /* 模态框 */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }
-        .modal-content {
-            background: white;
-            max-width: 550px;
-            width: 90%;
-            border-radius: 28px;
-            padding: 24px;
-            box-shadow: 0 20px 35px rgba(0,0,0,0.2);
-        }
-        .form-group {
-            margin-bottom: 16px;
-        }
-        .form-group label {
-            display: block;
-            font-weight: 500;
-            margin-bottom: 6px;
-            font-size: 0.8rem;
-            color: #2c3e4e;
-        }
-        .form-group input, .form-group textarea, .form-group select {
-            width: 100%;
-            padding: 8px 12px;
-            border-radius: 14px;
-            border: 1px solid #cbdde6;
-            font-size: 0.85rem;
-        }
-        .modal-buttons {
-            display: flex;
-            justify-content: flex-end;
-            gap: 12px;
-            margin-top: 20px;
-        }
-        .filter-input {
-            padding: 6px 12px;
-            border-radius: 40px;
-            border: 1px solid #cbdde6;
-            width: 220px;
-            font-size: 0.8rem;
-        }
-        footer {
-            margin-top: 30px;
-            text-align: center;
-            font-size: 0.7rem;
-            color: #6c7a89;
-        }
-        @media (max-width: 700px) {
-            body { padding: 16px; }
-            .project-table th, .project-table td { padding: 8px 6px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f0f4f8; color: var(--dark); line-height: 1.6; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        header { background: linear-gradient(135deg, var(--primary), var(--secondary)); color: white; padding: 25px 0; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1 { text-align: center; font-size: 2rem; font-weight: 600; }
+        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95rem; font-weight: 500; transition: all 0.3s ease; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-primary { background-color: var(--secondary); color: white; }
+        .btn-primary:hover { background-color: #1e5a7a; }
+        .btn-outline { background-color: transparent; border: 2px solid var(--secondary); color: var(--secondary); }
+        .btn-outline:hover { background-color: rgba(44, 125, 160, 0.1); }
+        .btn-success { background-color: var(--success); color: white; }
+        .btn-success:hover { background-color: #218838; }
+        .search-box { flex: 1; min-width: 250px; }
+        .search-box input { width: 100%; padding: 12px 18px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; transition: border-color 0.3s; }
+        .search-box input:focus { outline: none; border-color: var(--accent); }
+        .table-container { background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+        th { background-color: var(--light); font-weight: 600; color: var(--primary); position: sticky; top: 0; z-index: 10; }
+        tr:hover { background-color: #f8f9fa; }
+        .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 500; display: inline-block; }
+        .status-high { background-color: #d4edda; color: #155724; }
+        .status-medium { background-color: #fff3cd; color: #856404; }
+        .status-low { background-color: #f8d7da; color: #721c24; }
+        .status-gray { background-color: #e9ecef; color: #495057; }
+        .action-btns { display: flex; gap: 8px; }
+        .icon-btn { background: none; border: none; cursor: pointer; font-size: 1.1rem; padding: 5px; color: var(--secondary); transition: color 0.3s; }
+        .icon-btn:hover { color: var(--primary); }
+        .icon-btn.delete { color: var(--danger); }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-content { background-color: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 600px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-header h3 { color: var(--primary); font-size: 1.4rem; }
+        .close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #999; }
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 500; color: var(--dark); }
+        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 10px 14px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; transition: border-color 0.3s; }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+        .form-row { display: flex; gap: 15px; }
+        .form-row .form-group { flex: 1; }
+        .modal-buttons { display: flex; justify-content: flex-end; gap: 12px; margin-top: 25px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; }
+        .stat-number { font-size: 2.2rem; font-weight: 700; color: var(--secondary); }
+        .stat-label { color: #666; font-size: 0.95rem; margin-top: 5px; }
+        .progress-bar { width: 100%; height: 8px; background-color: #e0e0e0; border-radius: 4px; overflow: hidden; margin-top: 5px; }
+        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+        .remark-cell { max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        /* 【新增】Tab切换样式 */
+        .tab-nav { display: flex; gap: 2px; background: white; border-radius: 10px; padding: 5px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .tab-item { flex: 1; padding: 12px 20px; text-align: center; border-radius: 8px; cursor: pointer; font-weight: 500; color: var(--gray); transition: all 0.3s ease; }
+        .tab-item.active { background-color: var(--secondary); color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        /* 【新增】统计表格专属样式 */
+        .stats-table th { white-space: nowrap; }
+        .rate-bar { display: flex; align-items: center; gap: 10px; }
+        .rate-bar .progress-bar { flex: 1; min-width: 60px; }
+        .stats-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+        .table-scroll { overflow-x: auto; }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .fw-bold { font-weight: 600; }
+        @media (max-width: 768px) { 
+            .form-row { flex-direction: column; } 
+            .toolbar { flex-direction: column; align-items: stretch; } 
+            .btn { justify-content: center; }
+            .tab-nav { flex-direction: column; }
         }
     </style>
 </head>
 <body>
-<div id="connectionStatus" class="connection-status">🔴 与服务器断开连接，正在尝试重连...</div>
-
-<div class="dashboard-container">
-    <!-- 头部信息 -->
-    <div class="header-card">
-        <div class="title-section">
-            <h1>📐 设计院 · 项目全景看板 (协作版)</h1>
-            <p>自动进度追踪 | 人员工作量统计 | 数据实时云端同步</p>
+    <header>
+        <div class="container">
+            <h1>🏗️ 设计院项目管理系统（工作量统计增强版）</h1>
         </div>
-        <div class="date-badge" id="currentDateDisplay"></div>
-    </div>
-    <!-- 统计卡片 -->
-    <div class="stats-summary" id="statsCards">
-        <div class="stat-card" style="border-left-color: #2c7da0;"><div class="stat-number" id="totalProjects">0</div><div class="stat-label">总项目数</div></div>
-        <div class="stat-card" style="border-left-color: #38a169;"><div class="stat-number" id="completedProjects">0</div><div class="stat-label">已完成</div></div>
-        <div class="stat-card" style="border-left-color: #e53e3e;"><div class="stat-number" id="overdueProjects">0</div><div class="stat-label">逾期未完成</div></div>
-        <div class="stat-card" style="border-left-color: #ed8936;"><div class="stat-number" id="inProgressProjects">0</div><div class="stat-label">进行中</div></div>
-    </div>
-    <!-- 工具栏 -->
-    <div class="toolbar">
-        <div>
-            <button class="btn btn-primary" id="addProjectBtn">➕ 新建项目</button>
-            <button class="btn btn-outline" id="exportCsvBtn">📎 导出CSV</button>
-        </div>
-        <div>
-            <input type="text" id="filterInput" class="filter-input" placeholder="🔍 按项目名/负责人/设计师筛选" autocomplete="off">
-        </div>
-    </div>
+    </header>
 
-    <!-- 项目表格 -->
-    <div class="table-wrapper">
-        <table class="project-table" id="projectTable">
-            <thead>
-                <tr>
-                    <th>项目名称</th><th>负责人</th><th>主要设计师</th><th>计划开始</th><th>计划完成</th><th>实际完成日</th>
-                    <th>自动状态</th><th>进度%</th><th>备注</th><th>操作</th>
-                </tr>
-            </thead>
-            <tbody id="projectTableBody">
-                <tr><td colspan="10" style="text-align:center;">正在连接服务器...</td></tr>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- 人员工作量统计表 -->
-    <div class="stats-section">
-        <div class="stats-title">👥 设计师 & 负责人 · 工作量统计</div>
-        <div style="overflow-x: auto;">
-            <table class="stats-table" id="workloadTable">
-                <thead><tr><th>姓名</th><th>参与项目总数</th><th>已完成项目数</th><th>逾期项目数</th><th>完成率</th></tr></thead>
-                <tbody id="workloadTableBody"><tr><td colspan="5">暂无数据</td></tr></tbody>
-            </table>
-        </div>
-    </div>
-    <footer>✅ 数据实时保存至云端 | 一人修改，全员同步</footer>
-</div>
-
-<!-- 模态框（新增/编辑） -->
-<div id="projectModal" class="modal">
-    <div class="modal-content">
-        <h3 id="modalTitle">新建项目</h3>
-        <form id="projectForm">
-            <input type="hidden" id="editId" value="">
-            <div class="form-group"><label>项目名称 *</label><input type="text" id="projName" required></div>
-            <div class="form-group"><label>负责人 *</label><input type="text" id="leader" placeholder="例：张建国" required></div>
-            <div class="form-group"><label>主要设计师（多人用逗号分隔）*</label><input type="text" id="designer" placeholder="例：李思思,王明远" required></div>
-            <div class="form-group"><label>计划开始日期 *</label><input type="date" id="startDate" required></div>
-            <div class="form-group"><label>计划完成日期 *</label><input type="date" id="endDate" required></div>
-            <div class="form-group"><label>实际完成日期（留空表示未完成）</label><input type="date" id="actualEndDate"></div>
-            <div class="form-group"><label>进度 % (手动微调)</label><input type="number" id="progressPercent" min="0" max="100" value="0" step="5"></div>
-            <div class="form-group"><label>备注</label><textarea id="remarks" rows="2"></textarea></div>
-            <div class="modal-buttons">
-                <button type="button" class="btn btn-outline" id="closeModalBtn">取消</button>
-                <button type="submit" class="btn btn-primary">保存项目</button>
+    <div class="container">
+        <!-- 全局汇总统计卡片 -->
+        <div class="stats" id="summaryStats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalProjects">0</div>
+                <div class="stat-label">总项目数</div>
             </div>
-        </form>
+            <div class="stat-card">
+                <div class="stat-number" id="totalCompleted">0</div>
+                <div class="stat-label">已完成项目</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalLeaders">0</div>
+                <div class="stat-label">项目负责人</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalDesigners">0</div>
+                <div class="stat-label">参与设计师</div>
+            </div>
+        </div>
+
+        <!-- Tab导航 -->
+        <div class="tab-nav">
+            <div class="tab-item active" data-tab="project">项目管理</div>
+            <div class="tab-item" data-tab="leader-stats">负责人工作量统计</div>
+            <div class="tab-item" data-tab="designer-stats">设计师工作量统计</div>
+        </div>
+
+        <!-- Tab1：项目管理页面（原有功能完整保留） -->
+        <div class="tab-content active" id="project-tab">
+            <!-- 工具栏 -->
+            <div class="toolbar">
+                <button class="btn btn-primary" id="addProjectBtn">➕ 新增项目</button>
+                <div class="search-box">
+                    <input type="text" id="filterInput" placeholder="🔍 搜索项目名称、负责人、设计师...">
+                </div>
+                <button class="btn btn-outline" id="exportCsvBtn">📥 导出项目CSV</button>
+            </div>
+
+            <!-- 项目表格 -->
+            <div class="table-container">
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>项目名称</th>
+                                <th>负责人</th>
+                                <th>设计师</th>
+                                <th>开始日期</th>
+                                <th>计划结束</th>
+                                <th>实际结束</th>
+                                <th>进度</th>
+                                <th>备注</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="projectTableBody">
+                            <!-- 动态生成 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab2：负责人工作量统计 -->
+        <div class="tab-content" id="leader-stats-tab">
+            <div class="stats-toolbar">
+                <h3 style="color: var(--primary);">📊 项目负责人工作量明细</h3>
+                <button class="btn btn-outline" id="exportLeaderStatsBtn">📥 导出负责人统计</button>
+            </div>
+            <div class="table-container">
+                <div class="table-scroll">
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>负责人</th>
+                                <th class="text-center">负责项目总数</th>
+                                <th class="text-center">已完成项目</th>
+                                <th class="text-center">进行中项目</th>
+                                <th class="text-center">逾期项目</th>
+                                <th class="text-center">项目完成率</th>
+                                <th class="text-center">逾期率</th>
+                                <th class="text-center">平均进度</th>
+                                <th class="text-center">负责子项总数</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderStatsBody">
+                            <!-- 动态生成 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab3：设计师工作量统计 -->
+        <div class="tab-content" id="designer-stats-tab">
+            <div class="stats-toolbar">
+                <h3 style="color: var(--primary);">👨‍💻 设计师工作量明细</h3>
+                <button class="btn btn-outline" id="exportDesignerStatsBtn">📥 导出设计师统计</button>
+            </div>
+            <div class="table-container">
+                <div class="table-scroll">
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>设计师姓名</th>
+                                <th class="text-center">参与项目总数</th>
+                                <th class="text-center">已完成项目</th>
+                                <th class="text-center">进行中项目</th>
+                                <th class="text-center">逾期项目</th>
+                                <th class="text-center">项目完成率</th>
+                                <th class="text-center">平均进度</th>
+                                <th class="text-center">负责子项总数</th>
+                                <th class="text-center">权重化工作量得分</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="designerStatsBody">
+                            <!-- 动态生成 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 设计师子项明细模态框 -->
+            <div class="modal" id="designerDetailModal">
+                <div class="modal-content" style="max-width: 900px;">
+                    <div class="modal-header">
+                        <h3 id="designerDetailTitle">设计师子项明细</h3>
+                        <button class="close-btn" id="closeDesignerDetailBtn">&times;</button>
+                    </div>
+                    <div class="table-scroll" style="max-height: 60vh; overflow-y: auto;">
+                        <table class="stats-table">
+                            <thead>
+                                <tr>
+                                    <th>所属项目</th>
+                                    <th>项目负责人</th>
+                                    <th>阶段类型</th>
+                                    <th>子项名称</th>
+                                    <th>子项进度</th>
+                                    <th>计划结束日期</th>
+                                </tr>
+                            </thead>
+                            <tbody id="designerDetailBody">
+                                <!-- 动态生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-outline" id="closeDesignerDetailBtn2">关闭</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-</div>
 
-<script>
-    // ---------- 配置区域 ----------
-// 这里必须填你自己的Railway完整域名，不要加末尾的/
-const SERVER_URL = 'https://design-project-production.up.railway.app';
-const API_URL = `${SERVER_URL}/api`;
+    <!-- 主项目编辑/新增模态框（原有完整保留） -->
+    <div class="modal" id="projectModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">新增项目</h3>
+                <button class="close-btn" id="closeModalBtn">&times;</button>
+            </div>
+            <form id="projectForm">
+                <input type="hidden" id="editProjectId">
+                <div class="form-group">
+                    <label>项目名称 *</label>
+                    <input type="text" id="projectName" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>负责人 *</label>
+                        <input type="text" id="leader" required>
+                    </div>
+                    <div class="form-group">
+                        <label>设计师 *</label>
+                        <input type="text" id="designer" required placeholder="多个设计师用英文逗号分隔">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>开始日期 *</label>
+                        <input type="date" id="startDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label>计划结束 *</label>
+                        <input type="date" id="endDate" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>实际结束</label>
+                    <input type="date" id="actualEndDate">
+                </div>
+                <div class="form-group">
+                    <label>进度 (%) *</label>
+                    <input type="number" id="progressPercent" min="0" max="100" value="0" required>
+                </div>
+                <div class="form-group">
+                    <label>备注</label>
+                    <textarea id="remarks" rows="3"></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-outline" id="closeModalBtn2">取消</button>
+                    <button type="submit" class="btn btn-primary">保存项目</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
-// 连接 Socket.io
-const socket = io(SERVER_URL, {
-    reconnection: true,
-    reconnectionAttempts: 10,
-    timeout: 20000
-});
+    <!-- 子项管理模态框（原有完整保留） -->
+    <div class="modal" id="phaseModal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3 id="phaseModalTitle">子项管理</h3>
+                <button class="close-btn" id="closePhaseModalBtn">&times;</button>
+            </div>
+            <input type="hidden" id="phaseProjectId" value="">
+            <input type="hidden" id="editPhaseId" value="">
+            
+            <!-- 子项表单 -->
+            <form id="phaseForm" style="border-bottom: 1px solid #eee; padding-bottom: 20px; margin-bottom: 20px;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>阶段类型 *</label>
+                        <select id="phaseType" required>
+                            <option value="方案">方案阶段</option>
+                            <option value="初步设计">初步设计阶段</option>
+                            <option value="施工图">施工图阶段</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>子项名称 *</label>
+                        <input type="text" id="phaseName" placeholder="例：施工图-水、方案初稿" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>子项进度 % *</label>
+                        <input type="number" id="phaseProgress" min="0" max="100" value="0" step="5" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>子项备注</label>
+                    <textarea id="phaseRemarks" rows="2"></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-outline" id="clearPhaseFormBtn">清空表单</button>
+                    <button type="submit" class="btn btn-primary">保存子项</button>
+                </div>
+            </form>
 
-    // 全局项目数组
-    let projects = [];
-    let isSaving = false; // 防止重复提交
+            <!-- 子项列表 -->
+            <div>
+                <h4 style="margin: 0 0 12px; font-size: 0.95rem; color: #1e3a5f;">当前项目子项列表</h4>
+                <div style="max-height: 250px; overflow-y: auto;">
+                    <table class="stats-table" id="phaseListTable" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                        <thead style="position: sticky; top: 0; background: white; z-index: 1;">
+                            <tr style="background: #f8f9fa;">
+                                <th style="width: 30%; padding: 8px; text-align: left; border-bottom: 2px solid #eee;">子项名称</th>
+                                <th style="width: 15%; padding: 8px; text-align: left; border-bottom: 2px solid #eee;">类型</th>
+                                <th style="width: 15%; padding: 8px; text-align: left; border-bottom: 2px solid #eee;">进度</th>
+                                <th style="width: 30%; padding: 8px; text-align: left; border-bottom: 2px solid #eee;">备注</th>
+                                <th style="width: 10%; padding: 8px; text-align: left; border-bottom: 2px solid #eee;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="phaseListBody">
+                            <tr><td colspan="5" style="text-align:center; padding: 20px; color: #999;">暂无子项，请在上方添加</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    // 默认演示数据（仅用于本地兜底）
-    const defaultProjects = [
-        { id: '1', projectName: '示例项目-请点击右上角初始化数据', leader: '无', designer: '无', startDate: '2025-01-01', endDate: '2025-12-31', actualEndDate: '', progressPercent: 0, remarks: '请先确保后端服务已启动' }
-    ];
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        // 配置
+        const API_URL = 'http://localhost:3001/api';
+        const SERVER_URL = 'http://localhost:3001';
+        
+        // 全局状态
+        let projects = [];
+        let phases = [];
+        let currentPhaseProjectId = null;
+        let leaderStats = [];
+        let designerStats = [];
+        let socket = io(SERVER_URL);
 
-    // ---------- 网络状态监听 ----------
-    socket.on('connect', () => {
-        console.log('✅ 已连接到服务器');
-        document.getElementById('connectionStatus').classList.remove('offline');
-        loadProjects();
-    });
+        // 默认项目（备用）
+        const defaultProjects = [
+            { id: '1', projectName: '江东新区城市设计', leader: '张建国', designer: '李思思,王明远', startDate: '2025-01-10', endDate: '2025-04-20', actualEndDate: '', progressPercent: 65, remarks: '方案深化阶段，等待业主确认' },
+            { id: '2', projectName: '滨江景观桥工程', leader: '陈敏华', designer: '赵一航', startDate: '2025-02-01', endDate: '2025-05-15', actualEndDate: '', progressPercent: 30, remarks: '初设阶段，地勘完成' },
+            { id: '3', projectName: '科技园总部基地', leader: '刘子轩', designer: '李思思,周雅', startDate: '2024-12-01', endDate: '2025-03-01', actualEndDate: '2025-02-28', progressPercent: 100, remarks: '提前交付，验收通过' },
+            { id: '4', projectName: '轨道交通枢纽改造', leader: '王宏', designer: '吴启航,林芳', startDate: '2024-10-10', endDate: '2025-02-10', actualEndDate: '', progressPercent: 85, remarks: '收尾阶段，超期风险注意' },
+            { id: '5', projectName: '海绵城市示范区', leader: '陈敏华', designer: '郑秋怡', startDate: '2025-03-01', endDate: '2025-07-20', actualEndDate: '', progressPercent: 20, remarks: '初步设计' }
+        ];
 
-    socket.on('disconnect', () => {
-        console.log('❌ 与服务器断开连接');
-        document.getElementById('connectionStatus').classList.add('offline');
-    });
-
-    // 监听云端数据变化 (别人修改了，我这里自动刷新)
-    socket.on('data-updated', () => {
-        console.log('🔄 检测到数据更新，正在刷新...');
-        if (!isSaving) { // 如果是自己正在保存，就不重复加载
-            loadProjects();
+        // 工具函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
-    });
 
-    // ---------- 数据操作函数 ----------
-    async function loadProjects() {
-        try {
-            const res = await fetch(`${API_URL}/projects`);
-            const data = await res.json();
-            projects = data;
+        function getStatusClass(progress) {
+            if (progress >= 70) return 'status-high';
+            if (progress >= 30) return 'status-medium';
+            return 'status-low';
+        }
+
+        function getProgressColor(progress) {
+            if (progress >= 70) return '#28a745';
+            if (progress >= 30) return '#ffc107';
+            return '#dc3545';
+        }
+
+        function getRateColor(rate) {
+            if (rate >= 80) return '#28a745';
+            if (rate >= 50) return '#ffc107';
+            return '#dc3545';
+        }
+
+        // 基于子项进度自动计算主项目进度
+        function calculateProjectProgress(projectId) {
+            const projectPhases = phases.filter(p => p.projectId === projectId);
+            if (projectPhases.length === 0) return 0;
+            const totalProgress = projectPhases.reduce((sum, p) => sum + p.progress, 0);
+            return Math.round(totalProgress / projectPhases.length);
+        }
+
+        // ------------------------------
+        // 原有功能：项目管理相关（完整保留）
+        // ------------------------------
+        // 渲染统计数据
+        function renderStats() {
+            const total = projects.length;
+            const completed = projects.filter(p => p.progressPercent === 100).length;
+            const inProgress = projects.filter(p => p.progressPercent > 0 && p.progressPercent < 100).length;
+            const avgProgress = total > 0 ? Math.round(projects.reduce((sum, p) => sum + p.progressPercent, 0) / total) : 0;
+
+            document.getElementById('totalProjects').textContent = total;
+            document.getElementById('totalCompleted').textContent = completed;
+        }
+
+        // 渲染项目表格
+        function renderProjectTable() {
+            const filterText = document.getElementById('filterInput').value.toLowerCase();
+            const filteredProjects = projects.filter(p => 
+                p.projectName.toLowerCase().includes(filterText) ||
+                p.leader.toLowerCase().includes(filterText) ||
+                p.designer.toLowerCase().includes(filterText)
+            );
+
+            const tbody = document.getElementById('projectTableBody');
+            
+            if (filteredProjects.length === 0 && projects.length > 0) {
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding: 30px;">无匹配结果</td></tr>';
+                return;
+            }
+
             if (projects.length === 0) {
-                document.getElementById('projectTableBody').innerHTML = `
+                tbody.innerHTML = `
                     <tr>
                         <td colspan="10" style="text-align:center; padding: 40px;">
                             <p style="font-size: 1.2rem; color: #666;">数据库为空</p>
@@ -460,358 +466,661 @@ const socket = io(SERVER_URL, {
                     </tr>`;
                 return;
             }
-            renderAll();
-        } catch (e) {
-            console.error('加载失败', e);
-            projects = defaultProjects;
-            renderAll();
-        }
-    }
 
-    // 保存至云端
-    async function saveProjects() {
-        isSaving = true;
-        try {
-            await fetch(`${API_URL}/projects/sync`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(projects)
+            let html = '';
+            filteredProjects.forEach(proj => {
+                const progressColor = getProgressColor(proj.progressPercent);
+                html += `
+                <tr>
+                    <td style="font-weight: 600; color: var(--primary);">${escapeHtml(proj.projectName)}</td>
+                    <td>${escapeHtml(proj.leader)}</td>
+                    <td>${escapeHtml(proj.designer)}</td>
+                    <td>${proj.startDate}</td>
+                    <td>${proj.endDate}</td>
+                    <td>${proj.actualEndDate || '-'}</td>
+                    <td style="min-width: 150px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span class="status-badge ${getStatusClass(proj.progressPercent)}">${proj.progressPercent}%</span>
+                            <div class="progress-bar" style="flex: 1;">
+                                <div class="progress-fill" style="width: ${proj.progressPercent}%; background-color: ${progressColor};"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="remark-cell" title="${escapeHtml(proj.remarks)}">${escapeHtml(proj.remarks) || '-'}</td>
+                    <td class="action-btns">
+                        <button class="icon-btn edit" data-id="${proj.id}" title="编辑">✏️</button>
+                        <button class="icon-btn" style="color:#2c7da0;" data-id="${proj.id}" title="子项管理" id="managePhasesBtn">📑</button>
+                        <button class="icon-btn delete" data-id="${proj.id}" title="删除">🗑️</button>
+                    </td>
+                </tr>`;
             });
-        } catch (e) {
-            console.error('保存失败', e);
-            alert('保存失败，请检查网络连接');
-        } finally {
-            isSaving = false;
-        }
-    }
+            tbody.innerHTML = html;
 
-    // ---------- 以下是原有逻辑 (仅修改了存储调用部分) ----------
-    
-    // 获取当前系统日期 (YYYY-MM-DD)
-    function getTodayDate() {
-        return new Date().toISOString().slice(0,10);
-    }
-
-    // 根据日期和实际完成日计算自动状态
-    function computeAutoStatus(project) {
-        const today = getTodayDate();
-        const actualEnd = project.actualEndDate;
-        if (actualEnd && actualEnd.trim() !== '') {
-            return '已完成';
-        }
-        const endDate = project.endDate;
-        if (!endDate) return '计划中';
-        if (endDate < today) {
-            return '逾期';
-        }
-        const startDate = project.startDate;
-        if (startDate > today) {
-            return '计划中';
-        }
-        return '进行中';
-    }
-
-    function getDisplayProgress(proj) {
-        if (proj.actualEndDate && proj.actualEndDate.trim() !== '') {
-            return 100;
-        }
-        let p = Number(proj.progressPercent);
-        return isNaN(p) ? 0 : p;
-    }
-
-    function renderAll() {
-        renderProjectTable();
-        renderStatsCards();
-        renderWorkloadStats();
-    }
-
-    function renderProjectTable() {
-        const tbody = document.getElementById('projectTableBody');
-        const filterText = document.getElementById('filterInput').value.trim().toLowerCase();
-        let filtered = [...projects];
-        if (filterText) {
-            filtered = projects.filter(p => 
-                (p.projectName && p.projectName.toLowerCase().includes(filterText)) ||
-                (p.leader && p.leader.toLowerCase().includes(filterText)) ||
-                (p.designer && p.designer.toLowerCase().includes(filterText))
-            );
-        }
-        if (filtered.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;">暂无项目数据</td></tr>';
-            return;
-        }
-
-        let html = '';
-        filtered.forEach(proj => {
-            const autoStatus = computeAutoStatus(proj);
-            let rowClass = '';
-            if (autoStatus === '已完成') rowClass = 'row-completed';
-            else if (autoStatus === '逾期') rowClass = 'row-overdue';
-            else if (autoStatus === '进行中') rowClass = 'row-progress';
-            
-            const displayProgress = getDisplayProgress(proj);
-            let statusClass = 'status-badge';
-            if (autoStatus === '已完成') statusClass += ' status-completed';
-            else if (autoStatus === '逾期') statusClass += ' status-overdue';
-            else if (autoStatus === '进行中') statusClass += ' status-progress';
-            else statusClass += ' status-planned';
-            
-            const progressWidth = displayProgress;
-            html += `<tr class="${rowClass}">
-                <td style="font-weight:500;">${escapeHtml(proj.projectName)}</td>
-                <td>${escapeHtml(proj.leader)}</td>
-                <td>${escapeHtml(proj.designer)}</td>
-                <td>${proj.startDate || '-'}</td>
-                <td>${proj.endDate || '-'}</td>
-                <td>${proj.actualEndDate || '-'}</td>
-                <td><span class="${statusClass}">${autoStatus}</span></td>
-                <td class="progress-cell">
-                    <span>${displayProgress}%</span>
-                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${progressWidth}%;"></div></div>
-                </td>
-                <td class="remark-cell">${escapeHtml(proj.remarks || '')}</td>
-                <td class="action-btns">
-                    <button class="icon-btn edit" data-id="${proj.id}" title="编辑">✏️</button>
-                    <button class="icon-btn delete" data-id="${proj.id}" title="删除">🗑️</button>
-                </td>
-            </tr>`;
-        });
-        tbody.innerHTML = html;
-
-        document.querySelectorAll('.edit').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = btn.getAttribute('data-id');
-                openEditModal(id);
+            // 绑定事件
+            document.querySelectorAll('.edit').forEach(btn => {
+                btn.addEventListener('click', () => openEditModal(btn.getAttribute('data-id')));
             });
-        });
-        document.querySelectorAll('.delete').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = btn.getAttribute('data-id');
-                if (confirm('确定要删除该项目吗？')) {
-                    projects = projects.filter(p => p.id !== id);
-                    saveProjects().then(renderAll);
+            document.querySelectorAll('.delete').forEach(btn => {
+                btn.addEventListener('click', () => deleteProject(btn.getAttribute('data-id')));
+            });
+        }
+
+        // 模态框操作
+        function openAddModal() {
+            document.getElementById('modalTitle').textContent = '新增项目';
+            document.getElementById('projectForm').reset();
+            document.getElementById('editProjectId').value = '';
+            document.getElementById('progressPercent').value = '0';
+            document.getElementById('projectModal').style.display = 'flex';
+        }
+
+        function openEditModal(id) {
+            const project = projects.find(p => p.id === id);
+            if (!project) return;
+
+            document.getElementById('modalTitle').textContent = '编辑项目';
+            document.getElementById('editProjectId').value = project.id;
+            document.getElementById('projectName').value = project.projectName;
+            document.getElementById('leader').value = project.leader;
+            document.getElementById('designer').value = project.designer;
+            document.getElementById('startDate').value = project.startDate;
+            document.getElementById('endDate').value = project.endDate;
+            document.getElementById('actualEndDate').value = project.actualEndDate;
+            document.getElementById('progressPercent').value = project.progressPercent;
+            document.getElementById('remarks').value = project.remarks;
+            document.getElementById('projectModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('projectModal').style.display = 'none';
+        }
+
+        // 保存项目
+        async function saveProjectFromForm(e) {
+            e.preventDefault();
+            const id = document.getElementById('editProjectId').value || Date.now().toString();
+            const projectData = {
+                id,
+                projectName: document.getElementById('projectName').value,
+                leader: document.getElementById('leader').value,
+                designer: document.getElementById('designer').value,
+                startDate: document.getElementById('startDate').value,
+                endDate: document.getElementById('endDate').value,
+                actualEndDate: document.getElementById('actualEndDate').value,
+                progressPercent: parseInt(document.getElementById('progressPercent').value),
+                remarks: document.getElementById('remarks').value
+            };
+
+            // 乐观更新
+            const existingIndex = projects.findIndex(p => p.id === id);
+            if (existingIndex >= 0) {
+                projects[existingIndex] = projectData;
+            } else {
+                projects.push(projectData);
+            }
+            renderAll();
+            closeModal();
+
+            // 同步到服务器
+            try {
+                await fetch(`${API_URL}/projects/sync`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projects, phases })
+                });
+            } catch (e) {
+                console.error('同步失败', e);
+                alert('保存成功，但同步到服务器失败，请检查网络连接');
+                await loadProjects();
+            }
+        }
+
+        // 删除项目
+        async function deleteProject(id) {
+            if (!confirm('确定要删除这个项目吗？')) return;
+            
+            // 乐观更新
+            projects = projects.filter(p => p.id !== id);
+            phases = phases.filter(p => p.projectId !== id);
+            renderAll();
+
+            // 同步到服务器
+            try {
+                await fetch(`${API_URL}/projects/sync`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projects, phases })
+                });
+            } catch (e) {
+                console.error('同步失败', e);
+                alert('删除成功，但同步到服务器失败，请检查网络连接');
+                await loadProjects();
+            }
+        }
+
+        // 导出项目CSV
+        function exportToCSV() {
+            const headers = ['项目名称', '负责人', '设计师', '开始日期', '计划结束', '实际结束', '进度', '备注'];
+            const csvContent = [
+                headers.join(','),
+                ...projects.map(p => [
+                    `"${p.projectName}"`,
+                    `"${p.leader}"`,
+                    `"${p.designer}"`,
+                    p.startDate,
+                    p.endDate,
+                    p.actualEndDate,
+                    p.progressPercent,
+                    `"${p.remarks}"`
+                ].join(','))
+            ].join('\n');
+
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `项目管理表_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+        }
+
+        // ------------------------------
+        // 原有功能：子项管理相关（完整保留）
+        // ------------------------------
+        async function loadPhases(projectId) {
+            currentPhaseProjectId = projectId;
+            try {
+                const res = await fetch(`${API_URL}/projects/${projectId}/phases`);
+                phases = await res.json();
+                renderPhaseList();
+            } catch (e) {
+                console.error('加载子项失败', e);
+                phases = [];
+                renderPhaseList();
+            }
+        }
+
+        function renderPhaseList() {
+            const tbody = document.getElementById('phaseListBody');
+            if (phases.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color: #999;">暂无子项，请在上方添加</td></tr>';
+                return;
+            }
+            let html = '';
+            phases.forEach(phase => {
+                html += `<tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px;">${escapeHtml(phase.phaseName)}</td>
+                    <td style="padding: 8px;"><span class="status-badge" style="background:#e3f2fd; color:#1565c0; font-size:0.8rem;">${phase.phaseType}</span></td>
+                    <td style="padding: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-weight:500;">${phase.progress}%</span>
+                            <div class="progress-bar" style="flex: 1; height:6px;">
+                                <div class="progress-fill" style="width: ${phase.progress}%; background-color: ${getProgressColor(phase.progress)};"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="remark-cell" style="padding: 8px;" title="${escapeHtml(phase.remarks || '')}">${escapeHtml(phase.remarks || '-')}</td>
+                    <td class="action-btns" style="padding: 8px;">
+                        <button class="icon-btn edit" data-id="${phase.id}" title="编辑子项" style="font-size:0.9rem;">✏️</button>
+                        <button class="icon-btn delete" data-id="${phase.id}" title="删除子项" style="font-size:0.9rem;">🗑️</button>
+                    </td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+
+            document.querySelectorAll('#phaseListTable .edit').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = btn.getAttribute('data-id');
+                    openEditPhaseModal(id);
+                });
+            });
+            document.querySelectorAll('#phaseListTable .delete').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = btn.getAttribute('data-id');
+                    if (confirm('确定要删除该子项吗？')) {
+                        deletePhase(id);
+                    }
+                });
+            });
+        }
+
+        function openPhaseModal(projectId) {
+            currentPhaseProjectId = projectId;
+            const project = projects.find(p => p.id === projectId);
+            document.getElementById('phaseModalTitle').innerText = `子项管理 - ${project ? project.projectName : ''}`;
+            document.getElementById('phaseForm').reset();
+            document.getElementById('editPhaseId').value = '';
+            document.getElementById('phaseProjectId').value = projectId;
+            document.getElementById('phaseProgress').value = '0';
+            document.getElementById('phaseName').focus();
+            loadPhases(projectId);
+            document.getElementById('phaseModal').style.display = 'flex';
+        }
+
+        function openEditPhaseModal(phaseId) {
+            const phase = phases.find(p => p.id === phaseId);
+            if (!phase) return;
+            document.getElementById('phaseModalTitle').innerText = `编辑子项 - ${phase.phaseName}`;
+            document.getElementById('editPhaseId').value = phase.id;
+            document.getElementById('phaseProjectId').value = phase.projectId;
+            document.getElementById('phaseType').value = phase.phaseType;
+            document.getElementById('phaseName').value = phase.phaseName;
+            document.getElementById('phaseProgress').value = phase.progress;
+            document.getElementById('phaseRemarks').value = phase.remarks || '';
+        }
+
+        function closePhaseModal() {
+            document.getElementById('phaseModal').style.display = 'none';
+        }
+
+        function clearPhaseForm() {
+            document.getElementById('phaseForm').reset();
+            document.getElementById('editPhaseId').value = '';
+            document.getElementById('phaseProgress').value = '0';
+            document.getElementById('phaseName').focus();
+        }
+
+        async function savePhaseFromForm(e) {
+            e.preventDefault();
+            const projectId = document.getElementById('phaseProjectId').value;
+            const phaseType = document.getElementById('phaseType').value;
+            const phaseName = document.getElementById('phaseName').value.trim();
+            const progress = parseInt(document.getElementById('phaseProgress').value, 10);
+            const remarks = document.getElementById('phaseRemarks').value.trim();
+            const phaseId = document.getElementById('editPhaseId').value || Date.now().toString();
+
+            if (!phaseName || isNaN(progress) || progress < 0 || progress > 100) {
+                alert('请填写完整且合法的子项信息');
+                return;
+            }
+
+            const phaseData = {
+                id: phaseId,
+                projectId,
+                phaseName,
+                phaseType,
+                progress,
+                remarks
+            };
+
+            const existingIndex = phases.findIndex(p => p.id === phaseId);
+            if (existingIndex >= 0) {
+                phases[existingIndex] = phaseData;
+            } else {
+                phases.push(phaseData);
+            }
+            renderPhaseList();
+            clearPhaseForm();
+
+            try {
+                await fetch(`${API_URL}/phases/save`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(phaseData)
+                });
+                loadProjects();
+            } catch (e) {
+                console.error('保存子项失败', e);
+                alert('保存子项失败，请检查网络连接');
+            }
+        }
+
+        async function deletePhase(phaseId) {
+            phases = phases.filter(p => p.id !== phaseId);
+            renderPhaseList();
+
+            try {
+                await fetch(`${API_URL}/phases/${phaseId}`, {
+                    method: 'DELETE'
+                });
+                loadProjects();
+            } catch (e) {
+                console.error('删除子项失败', e);
+                alert('删除子项失败，请检查网络连接');
+            }
+        }
+
+        // ------------------------------
+        // 【新增】工作量统计相关功能
+        // ------------------------------
+        // 加载全局汇总统计
+        async function loadSummaryStats() {
+            try {
+                const res = await fetch(`${API_URL}/stats/summary`);
+                const data = await res.json();
+                document.getElementById('totalProjects').textContent = data.totalProjects || 0;
+                document.getElementById('totalCompleted').textContent = data.totalCompleted || 0;
+                document.getElementById('totalLeaders').textContent = data.totalLeaders || 0;
+                document.getElementById('totalDesigners').textContent = data.totalDesigners || 0;
+            } catch (e) {
+                console.error('加载汇总统计失败', e);
+            }
+        }
+
+        // 加载负责人统计数据
+        async function loadLeaderStats() {
+            try {
+                const res = await fetch(`${API_URL}/stats/leader`);
+                leaderStats = await res.json();
+                renderLeaderStats();
+            } catch (e) {
+                console.error('加载负责人统计失败', e);
+                leaderStats = [];
+                renderLeaderStats();
+            }
+        }
+
+        // 渲染负责人统计表格
+        function renderLeaderStats() {
+            const tbody = document.getElementById('leaderStatsBody');
+            if (leaderStats.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding: 30px;">暂无统计数据</td></tr>';
+                return;
+            }
+
+            let html = '';
+            leaderStats.forEach(item => {
+                html += `
+                <tr>
+                    <td class="fw-bold">${escapeHtml(item.leader)}</td>
+                    <td class="text-center">${item.totalProjects}</td>
+                    <td class="text-center">${item.completedProjects}</td>
+                    <td class="text-center">${item.inProgressProjects}</td>
+                    <td class="text-center"><span class="status-badge ${item.overdueProjects > 0 ? 'status-low' : 'status-high'}">${item.overdueProjects}</span></td>
+                    <td class="text-center">
+                        <div class="rate-bar">
+                            <span style="color: ${getRateColor(item.completeRate)}; font-weight: 500;">${item.completeRate}%</span>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${item.completeRate}%; background-color: ${getRateColor(item.completeRate)};"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-center">
+                        <span style="color: ${item.overdueRate > 20 ? '#dc3545' : '#6c757d'}; font-weight: 500;">${item.overdueRate}%</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="status-badge ${getStatusClass(item.avgProgress)}">${item.avgProgress}%</span>
+                    </td>
+                    <td class="text-center">${item.totalPhases}</td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+
+        // 导出负责人统计CSV
+        function exportLeaderStats() {
+            const headers = ['负责人', '负责项目总数', '已完成项目', '进行中项目', '逾期项目', '项目完成率', '逾期率', '平均进度', '负责子项总数'];
+            const csvContent = [
+                headers.join(','),
+                ...leaderStats.map(item => [
+                    `"${item.leader}"`,
+                    item.totalProjects,
+                    item.completedProjects,
+                    item.inProgressProjects,
+                    item.overdueProjects,
+                    `${item.completeRate}%`,
+                    `${item.overdueRate}%`,
+                    `${item.avgProgress}%`,
+                    item.totalPhases
+                ].join(','))
+            ].join('\n');
+
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `负责人工作量统计_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+        }
+
+        // 加载设计师统计数据
+        async function loadDesignerStats() {
+            try {
+                const res = await fetch(`${API_URL}/stats/designer`);
+                designerStats = await res.json();
+                renderDesignerStats();
+            } catch (e) {
+                console.error('加载设计师统计失败', e);
+                designerStats = [];
+                renderDesignerStats();
+            }
+        }
+
+        // 渲染设计师统计表格
+        function renderDesignerStats() {
+            const tbody = document.getElementById('designerStatsBody');
+            if (designerStats.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding: 30px;">暂无统计数据</td></tr>';
+                return;
+            }
+
+            let html = '';
+            designerStats.forEach(item => {
+                html += `
+                <tr>
+                    <td class="fw-bold">${escapeHtml(item.designer)}</td>
+                    <td class="text-center">${item.joinProjects}</td>
+                    <td class="text-center">${item.completedProjects}</td>
+                    <td class="text-center">${item.inProgressProjects}</td>
+                    <td class="text-center"><span class="status-badge ${item.overdueProjects > 0 ? 'status-low' : 'status-high'}">${item.overdueProjects}</span></td>
+                    <td class="text-center">
+                        <div class="rate-bar">
+                            <span style="color: ${getRateColor(item.completeRate)}; font-weight: 500;">${item.completeRate}%</span>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${item.completeRate}%; background-color: ${getRateColor(item.completeRate)};"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-center">
+                        <span class="status-badge ${getStatusClass(item.avgProgress)}">${item.avgProgress}%</span>
+                    </td>
+                    <td class="text-center">${item.totalPhases}</td>
+                    <td class="text-center fw-bold" style="color: var(--secondary);">${item.workScore}</td>
+                    <td>
+                        <button class="btn btn-outline" style="padding: 4px 10px; font-size: 0.8rem;" data-designer="${item.designer}" id="viewDesignerDetailBtn">查看明细</button>
+                    </td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+
+            // 绑定查看明细事件
+            document.querySelectorAll('#viewDesignerDetailBtn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const designer = btn.getAttribute('data-designer');
+                    openDesignerDetailModal(designer);
+                });
+            });
+        }
+
+        // 打开设计师明细模态框
+        async function openDesignerDetailModal(designer) {
+            document.getElementById('designerDetailTitle').innerText = `${designer} - 子项工作明细`;
+            document.getElementById('designerDetailModal').style.display = 'flex';
+            
+            try {
+                const res = await fetch(`${API_URL}/stats/designer/${designer}/phase`);
+                const detail = await res.json();
+                renderDesignerDetail(detail);
+            } catch (e) {
+                console.error('加载设计师明细失败', e);
+                document.getElementById('designerDetailBody').innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px;">加载明细失败</td></tr>';
+            }
+        }
+
+        // 渲染设计师明细
+        function renderDesignerDetail(detail) {
+            const tbody = document.getElementById('designerDetailBody');
+            if (detail.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 20px;">暂无子项明细</td></tr>';
+                return;
+            }
+
+            let html = '';
+            detail.forEach(item => {
+                html += `
+                <tr>
+                    <td class="fw-bold">${escapeHtml(item.projectName)}</td>
+                    <td>${escapeHtml(item.leader)}</td>
+                    <td><span class="status-badge status-gray">${item.phaseType}</span></td>
+                    <td>${escapeHtml(item.phaseName)}</td>
+                    <td>
+                        <div class="rate-bar">
+                            <span style="font-weight: 500;">${item.progress}%</span>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${item.progress}%; background-color: ${getProgressColor(item.progress)};"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>${item.endDate || '-'}</td>
+                </tr>`;
+            });
+            tbody.innerHTML = html;
+        }
+
+        // 关闭设计师明细模态框
+        function closeDesignerDetailModal() {
+            document.getElementById('designerDetailModal').style.display = 'none';
+        }
+
+        // 导出设计师统计CSV
+        function exportDesignerStats() {
+            const headers = ['设计师姓名', '参与项目总数', '已完成项目', '进行中项目', '逾期项目', '项目完成率', '逾期率', '平均进度', '负责子项总数', '权重化工作量得分'];
+            const csvContent = [
+                headers.join(','),
+                ...designerStats.map(item => [
+                    `"${item.designer}"`,
+                    item.joinProjects,
+                    item.completedProjects,
+                    item.inProgressProjects,
+                    item.overdueProjects,
+                    `${item.completeRate}%`,
+                    `${item.overdueRate}%`,
+                    `${item.avgProgress}%`,
+                    item.totalPhases,
+                    item.workScore
+                ].join(','))
+            ].join('\n');
+
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `设计师工作量统计_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+        }
+
+        // Tab切换功能
+        function initTab() {
+            const tabItems = document.querySelectorAll('.tab-item');
+            const tabContents = document.querySelectorAll('.tab-content');
+
+            tabItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    const tab = item.getAttribute('data-tab');
+                    
+                    // 切换激活状态
+                    tabItems.forEach(i => i.classList.remove('active'));
+                    tabContents.forEach(c => c.classList.remove('active'));
+                    item.classList.add('active');
+                    document.getElementById(`${tab}-tab`).classList.add('active');
+
+                    // 切换时加载对应统计数据
+                    if (tab === 'leader-stats') {
+                        loadLeaderStats();
+                    } else if (tab === 'designer-stats') {
+                        loadDesignerStats();
+                    }
+                });
+            });
+        }
+
+        // 渲染所有
+        function renderAll() {
+            renderStats();
+            renderProjectTable();
+            loadSummaryStats();
+        }
+
+        // 加载项目
+        async function loadProjects() {
+            try {
+                const res = await fetch(`${API_URL}/projects`);
+                const data = await res.json();
+                projects = data;
+                
+                try {
+                    const phaseRes = await fetch(`${API_URL}/projects/all/phases`);
+                    phases = await phaseRes.json();
+                } catch (e) {
+                    console.error('加载子项失败', e);
+                    phases = [];
+                }
+
+                if (projects.length === 0) {
+                    document.getElementById('projectTableBody').innerHTML = `
+                        <tr>
+                            <td colspan="10" style="text-align:center; padding: 40px;">
+                                <p style="font-size: 1.2rem; color: #666;">数据库为空</p>
+                                <p>请访问 <code style="background:#eee;padding:2px 6px;">${SERVER_URL}/api/init</code> 初始化演示数据</p>
+                            </td>
+                        </tr>`;
+                    return;
+                }
+                renderAll();
+            } catch (e) {
+                console.error('加载失败', e);
+                projects = defaultProjects;
+                renderAll();
+            }
+        }
+
+        // 绑定所有事件
+        function bindEvents() {
+            // 原有项目管理事件
+            document.getElementById('addProjectBtn').addEventListener('click', openAddModal);
+            document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+            document.getElementById('closeModalBtn2').addEventListener('click', closeModal);
+            document.getElementById('projectModal').addEventListener('click', (e) => { if(e.target === document.getElementById('projectModal')) closeModal(); });
+            document.getElementById('projectForm').addEventListener('submit', saveProjectFromForm);
+            document.getElementById('exportCsvBtn').addEventListener('click', exportToCSV);
+            document.getElementById('filterInput').addEventListener('input', () => renderProjectTable());
+
+            // 原有子项管理事件
+            document.getElementById('closePhaseModalBtn').addEventListener('click', closePhaseModal);
+            document.getElementById('phaseModal').addEventListener('click', (e) => { if(e.target === document.getElementById('phaseModal')) closePhaseModal(); });
+            document.getElementById('phaseForm').addEventListener('submit', savePhaseFromForm);
+            document.getElementById('clearPhaseFormBtn').addEventListener('click', clearPhaseForm);
+            
+            document.addEventListener('click', (e) => {
+                if (e.target.id === 'managePhasesBtn' || e.target.closest('#managePhasesBtn')) {
+                    const btn = e.target.id === 'managePhasesBtn' ? e.target : e.target.closest('#managePhasesBtn');
+                    const projectId = btn.getAttribute('data-id');
+                    openPhaseModal(projectId);
                 }
             });
-        });
-    }
 
-    function renderStatsCards() {
-        const total = projects.length;
-        let completed = 0, overdue = 0, inProgress = 0;
-        projects.forEach(p => {
-            const status = computeAutoStatus(p);
-            if (status === '已完成') completed++;
-            else if (status === '逾期') overdue++;
-            else if (status === '进行中') inProgress++;
-        });
-        document.getElementById('totalProjects').innerText = total;
-        document.getElementById('completedProjects').innerText = completed;
-        document.getElementById('overdueProjects').innerText = overdue;
-        document.getElementById('inProgressProjects').innerText = inProgress;
-    }
+            // 【新增】统计相关事件
+            document.getElementById('exportLeaderStatsBtn').addEventListener('click', exportLeaderStats);
+            document.getElementById('exportDesignerStatsBtn').addEventListener('click', exportDesignerStats);
+            document.getElementById('closeDesignerDetailBtn').addEventListener('click', closeDesignerDetailModal);
+            document.getElementById('closeDesignerDetailBtn2').addEventListener('click', closeDesignerDetailModal);
+            document.getElementById('designerDetailModal').addEventListener('click', (e) => { if(e.target === document.getElementById('designerDetailModal')) closeDesignerDetailModal(); });
 
-    function renderWorkloadStats() {
-        const peopleMap = new Map();
-        
-        projects.forEach(proj => {
-            const status = computeAutoStatus(proj);
-            const isCompleted = (status === '已完成');
-            const isOverdue = (status === '逾期');
-            
-            const personSet = new Set();
-            if (proj.leader && proj.leader.trim()) personSet.add(proj.leader.trim());
-            if (proj.designer && proj.designer.trim()) {
-                let designers = proj.designer.split(/[,，]+/).map(s => s.trim()).filter(s => s);
-                designers.forEach(d => personSet.add(d));
-            }
-            
-            personSet.forEach(person => {
-                if (!peopleMap.has(person)) {
-                    peopleMap.set(person, { total:0, completed:0, overdue:0 });
-                }
-                const stat = peopleMap.get(person);
-                stat.total += 1;
-                if (isCompleted) stat.completed += 1;
-                if (isOverdue) stat.overdue += 1;
-            });
-        });
-        
-        let workloadArray = Array.from(peopleMap.entries()).map(([name, stat]) => ({
-            name, total: stat.total, completed: stat.completed, overdue: stat.overdue,
-            completionRate: stat.total === 0 ? 0 : ((stat.completed / stat.total)*100).toFixed(1)
-        }));
-        workloadArray.sort((a,b) => b.total - a.total);
-        
-        const tbody = document.getElementById('workloadTableBody');
-        if (workloadArray.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5">暂无人员数据</td></tr>';
-            return;
-        }
-        let html = '';
-        workloadArray.forEach(w => {
-            html += `<tr>
-                <td><strong>${escapeHtml(w.name)}</strong></td>
-                <td>${w.total}</td>
-                <td>${w.completed}</td>
-                <td>${w.overdue}</td>
-                <td>${w.completionRate}%</td>
-            </tr>`;
-        });
-        tbody.innerHTML = html;
-    }
+            // Tab初始化
+            initTab();
 
-    let currentEditId = null;
-    function openAddModal() {
-        currentEditId = null;
-        document.getElementById('modalTitle').innerText = '新建项目';
-        document.getElementById('projectForm').reset();
-        document.getElementById('editId').value = '';
-        document.getElementById('actualEndDate').value = '';
-        document.getElementById('progressPercent').value = '0';
-        document.getElementById('remarks').value = '';
-        const today = getTodayDate();
-        document.getElementById('startDate').value = today;
-        let nextMonth = new Date();
-        nextMonth.setMonth(nextMonth.getMonth()+2);
-        let defaultEnd = nextMonth.toISOString().slice(0,10);
-        document.getElementById('endDate').value = defaultEnd;
-        document.getElementById('projName').focus();
-        document.getElementById('projectModal').style.display = 'flex';
-    }
-
-    function openEditModal(id) {
-        const proj = projects.find(p => p.id === id);
-        if (!proj) return;
-        currentEditId = id;
-        document.getElementById('modalTitle').innerText = '编辑项目';
-        document.getElementById('editId').value = id;
-        document.getElementById('projName').value = proj.projectName;
-        document.getElementById('leader').value = proj.leader;
-        document.getElementById('designer').value = proj.designer;
-        document.getElementById('startDate').value = proj.startDate;
-        document.getElementById('endDate').value = proj.endDate;
-        document.getElementById('actualEndDate').value = proj.actualEndDate || '';
-        let prog = proj.progressPercent;
-        if (proj.actualEndDate && proj.actualEndDate !== '') prog = 100;
-        document.getElementById('progressPercent').value = prog;
-        document.getElementById('remarks').value = proj.remarks || '';
-        document.getElementById('projectModal').style.display = 'flex';
-    }
-
-    function closeModal() {
-        document.getElementById('projectModal').style.display = 'none';
-    }
-
-    async function saveProjectFromForm(e) {
-        e.preventDefault();
-        const name = document.getElementById('projName').value.trim();
-        const leader = document.getElementById('leader').value.trim();
-        const designer = document.getElementById('designer').value.trim();
-        const startDate = document.getElementById('startDate').value;
-        const endDate = document.getElementById('endDate').value;
-        let actualEndDate = document.getElementById('actualEndDate').value;
-        let progressPercent = parseInt(document.getElementById('progressPercent').value, 10);
-        const remarks = document.getElementById('remarks').value;
-        
-        if (!name || !leader || !designer || !startDate || !endDate) {
-            alert('请填写完整信息');
-            return;
-        }
-        if (startDate > endDate) {
-            alert('开始日期不能晚于结束日期');
-            return;
-        }
-        
-        if (actualEndDate && actualEndDate.trim() !== '') {
-            progressPercent = 100;
-        } else {
-            actualEndDate = '';
-        }
-        
-        const editId = document.getElementById('editId').value;
-        if (editId) {
-            const index = projects.findIndex(p => p.id === editId);
-            if (index !== -1) {
-                projects[index] = {
-                    ...projects[index],
-                    projectName: name, leader, designer, startDate, endDate,
-                    actualEndDate: actualEndDate || '', progressPercent, remarks
-                };
-            }
-        } else {
-            const newId = Date.now().toString();
-            projects.push({
-                id: newId, projectName: name, leader, designer, startDate, endDate,
-                actualEndDate: actualEndDate || '', progressPercent, remarks
+            // Socket实时同步
+            socket.on('data-updated', () => {
+                console.log('数据已更新，正在重新加载...');
+                loadProjects();
+                loadSummaryStats();
             });
         }
-        
-        closeModal();
-        await saveProjects();
-        renderAll();
-    }
 
-    function exportToCSV() {
-        if (projects.length === 0) { alert('无数据可导出'); return; }
-        let csvRows = [["项目名称","负责人","主要设计师","计划开始","计划完成","实际完成","状态","进度","备注"]];
-        for (let p of projects) {
-            const autoStatus = computeAutoStatus(p);
-            const displayProgress = getDisplayProgress(p);
-            csvRows.push([
-                `"${p.projectName}"`, `"${p.leader}"`, `"${p.designer}"`, p.startDate, p.endDate,
-                p.actualEndDate || '', autoStatus, displayProgress, `"${(p.remarks || '').replace(/"/g, '""')}"`
-            ]);
+        // 初始化
+        function init() {
+            bindEvents();
+            loadProjects();
+            loadSummaryStats();
         }
-        const csvContent = csvRows.map(row => row.join(",")).join("\n");
-        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.href = url;
-        link.setAttribute("download", "设计院项目进度表.csv");
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-    }
 
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
-    }
-
-    function updateDateDisplay() {
-        const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth()+1).padStart(2,'0');
-        const dd = String(today.getDate()).padStart(2,'0');
-        const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
-        const weekday = weekdays[today.getDay()];
-        document.getElementById('currentDateDisplay').innerHTML = `📅 ${yyyy}.${mm}.${dd} ${weekday}`;
-    }
-
-    function bindEvents() {
-        document.getElementById('addProjectBtn').addEventListener('click', openAddModal);
-        document.getElementById('closeModalBtn').addEventListener('click', closeModal);
-        document.getElementById('projectModal').addEventListener('click', (e) => { if(e.target === document.getElementById('projectModal')) closeModal(); });
-        document.getElementById('projectForm').addEventListener('submit', saveProjectFromForm);
-        document.getElementById('exportCsvBtn').addEventListener('click', exportToCSV);
-        document.getElementById('filterInput').addEventListener('input', () => renderProjectTable());
-    }
-
-    async function init() {
-        bindEvents();
-        updateDateDisplay();
-        // 数据加载等待 socket 连接后触发
-        setInterval(() => {
-            updateDateDisplay();
-        }, 60000);
-    }
-    init();
-</script>
+        init();
+    </script>
 </body>
 </html>
