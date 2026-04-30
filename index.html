@@ -1,99 +1,817 @@
-const express = require('express');
-const cors = require('cors');
-const http = require('http');
-const { Server } = require('socket.io');
-const Database = require('better-sqlite3');
-const path = require('path');
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>设计院项目进度管理系统 | 协作版</title>
+    <!-- 引入 Socket.io 用于实时通信 -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, 'Segoe UI', 'Roboto', 'Noto Sans', sans-serif;
+        }
 
-// 1. 初始化数据库 (自动创建 projects.db 文件)
-const db = new Database('./projects.db');
-db.exec(`
-  CREATE TABLE IF NOT EXISTS projects (
-    id TEXT PRIMARY KEY,
-    projectName TEXT,
-    leader TEXT,
-    designer TEXT,
-    startDate TEXT,
-    endDate TEXT,
-    actualEndDate TEXT,
-    progressPercent INTEGER,
-    remarks TEXT
-  )
-`);
+        body {
+            background: #f0f2f5;
+            margin: 0;
+            padding: 24px 20px;
+        }
 
-// 2. 初始化服务
-const app = express();
-app.use(cors());
-app.use(express.json());
+        /* 顶部连接状态条 */
+        .connection-status {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: #e53e3e;
+            color: white;
+            text-align: center;
+            padding: 4px;
+            font-size: 0.8rem;
+            z-index: 9999;
+            display: none;
+        }
+        .connection-status.offline { display: block; }
 
-// 【关键修复】托管前端页面，直接访问域名就能打开index.html
-app.use(express.static(path.join(__dirname)));
+        /* 主容器 */
+        .dashboard-container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
 
-const server = http.createServer(app);
-const io = new Server(server, { 
-  cors: { 
-    origin: "*",
-    methods: ["GET", "POST"]
-  } 
+        /* 头部卡片 */
+        .header-card {
+            background: white;
+            border-radius: 20px;
+            padding: 16px 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .title-section h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: #1e3a5f;
+        }
+
+        .title-section p {
+            margin: 6px 0 0;
+            color: #5a6874;
+            font-size: 0.85rem;
+        }
+
+        .date-badge {
+            background: #eef2ff;
+            padding: 8px 20px;
+            border-radius: 40px;
+            font-weight: 500;
+            color: #1e40af;
+            font-size: 1rem;
+            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.02);
+        }
+
+        .stats-summary {
+            display: flex;
+            gap: 20px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            background: #f8fafc;
+            border-radius: 16px;
+            padding: 8px 16px;
+            min-width: 100px;
+            text-align: center;
+            border-left: 4px solid;
+        }
+
+        .stat-number {
+            font-size: 1.8rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: #475569;
+        }
+
+        /* 按钮与工具栏 */
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            gap: 12px;
+        }
+
+        .btn {
+            border: none;
+            padding: 8px 18px;
+            border-radius: 30px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 0.85rem;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            border: 1px solid #cfdee9;
+        }
+
+        .btn-primary {
+            background: #1e5f8e;
+            color: white;
+            border: none;
+            box-shadow: 0 2px 6px rgba(0,80,120,0.2);
+        }
+        .btn-primary:hover { background: #0f4a6e; transform: translateY(-1px);}
+        .btn-outline { border: 1px solid #b9cad6; background: white; }
+        .btn-outline:hover { background: #eef2f5; }
+        .btn-danger { color: #b91c1c; border-color: #f3c1c1; }
+        .btn-danger:hover { background: #fee2e2; }
+
+        /* 表格容器 支持横向滚动 */
+        .table-wrapper {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            overflow-x: auto;
+            margin-bottom: 32px;
+            padding: 4px 0;
+        }
+
+        .project-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            min-width: 1000px;
+        }
+
+        .project-table th {
+            background: #f8fafd;
+            padding: 14px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #1e2f3e;
+            border-bottom: 1px solid #e2edf2;
+            font-size: 0.8rem;
+        }
+
+        .project-table td {
+            padding: 12px 12px;
+            border-bottom: 1px solid #ecf3f8;
+            vertical-align: middle;
+        }
+
+        /* 状态标签 */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 30px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-align: center;
+            background: #eef2ff;
+            color: #1e40af;
+        }
+        .status-completed { background: #dff9e6; color: #2b6e3c; }
+        .status-overdue { background: #ffe6e5; color: #b91c1c; }
+        .status-progress { background: #fff1df; color: #b45309; }
+        .status-planned { background: #e6f0fa; color: #2266a8; }
+
+        /* 进度条简易展示 */
+        .progress-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .progress-bar-bg {
+            width: 60px;
+            background: #e2e8f0;
+            border-radius: 20px;
+            height: 6px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            background: #2c7da0;
+            height: 6px;
+            width: 0%;
+            border-radius: 20px;
+        }
+
+        /* 行状态着色 */
+        .row-completed { background-color: #f0fdf4; }
+        .row-overdue { background-color: #fff5f5; }
+        .row-progress { background-color: #fffbeb; }
+        
+        .remark-cell {
+            max-width: 180px;
+            word-break: break-word;
+            white-space: normal;
+            font-size: 0.75rem;
+            color: #3f5468;
+        }
+
+        .action-btns {
+            display: flex;
+            gap: 8px;
+        }
+        .icon-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.1rem;
+            padding: 4px 6px;
+            border-radius: 8px;
+        }
+        .icon-btn.edit:hover { background: #e6f0ff; color: #0f5f8c; }
+        .icon-btn.delete:hover { background: #ffe6e6; color: #c00; }
+
+        /* 统计表格 */
+        .stats-section {
+            background: white;
+            border-radius: 20px;
+            padding: 16px 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .stats-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #1e3a5f;
+            border-left: 4px solid #2c7da0;
+            padding-left: 14px;
+        }
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+        .stats-table th, .stats-table td {
+            padding: 10px 8px;
+            text-align: left;
+            border-bottom: 1px solid #eef2f5;
+        }
+
+        /* 模态框 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            max-width: 550px;
+            width: 90%;
+            border-radius: 28px;
+            padding: 24px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.2);
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 6px;
+            font-size: 0.8rem;
+            color: #2c3e4e;
+        }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 14px;
+            border: 1px solid #cbdde6;
+            font-size: 0.85rem;
+        }
+        .modal-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .filter-input {
+            padding: 6px 12px;
+            border-radius: 40px;
+            border: 1px solid #cbdde6;
+            width: 220px;
+            font-size: 0.8rem;
+        }
+        footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 0.7rem;
+            color: #6c7a89;
+        }
+        @media (max-width: 700px) {
+            body { padding: 16px; }
+            .project-table th, .project-table td { padding: 8px 6px; }
+        }
+    </style>
+</head>
+<body>
+<div id="connectionStatus" class="connection-status">🔴 与服务器断开连接，正在尝试重连...</div>
+
+<div class="dashboard-container">
+    <!-- 头部信息 -->
+    <div class="header-card">
+        <div class="title-section">
+            <h1>📐 设计院 · 项目全景看板 (协作版)</h1>
+            <p>自动进度追踪 | 人员工作量统计 | 数据实时云端同步</p>
+        </div>
+        <div class="date-badge" id="currentDateDisplay"></div>
+    </div>
+    <!-- 统计卡片 -->
+    <div class="stats-summary" id="statsCards">
+        <div class="stat-card" style="border-left-color: #2c7da0;"><div class="stat-number" id="totalProjects">0</div><div class="stat-label">总项目数</div></div>
+        <div class="stat-card" style="border-left-color: #38a169;"><div class="stat-number" id="completedProjects">0</div><div class="stat-label">已完成</div></div>
+        <div class="stat-card" style="border-left-color: #e53e3e;"><div class="stat-number" id="overdueProjects">0</div><div class="stat-label">逾期未完成</div></div>
+        <div class="stat-card" style="border-left-color: #ed8936;"><div class="stat-number" id="inProgressProjects">0</div><div class="stat-label">进行中</div></div>
+    </div>
+    <!-- 工具栏 -->
+    <div class="toolbar">
+        <div>
+            <button class="btn btn-primary" id="addProjectBtn">➕ 新建项目</button>
+            <button class="btn btn-outline" id="exportCsvBtn">📎 导出CSV</button>
+        </div>
+        <div>
+            <input type="text" id="filterInput" class="filter-input" placeholder="🔍 按项目名/负责人/设计师筛选" autocomplete="off">
+        </div>
+    </div>
+
+    <!-- 项目表格 -->
+    <div class="table-wrapper">
+        <table class="project-table" id="projectTable">
+            <thead>
+                <tr>
+                    <th>项目名称</th><th>负责人</th><th>主要设计师</th><th>计划开始</th><th>计划完成</th><th>实际完成日</th>
+                    <th>自动状态</th><th>进度%</th><th>备注</th><th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="projectTableBody">
+                <tr><td colspan="10" style="text-align:center;">正在连接服务器...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 人员工作量统计表 -->
+    <div class="stats-section">
+        <div class="stats-title">👥 设计师 & 负责人 · 工作量统计</div>
+        <div style="overflow-x: auto;">
+            <table class="stats-table" id="workloadTable">
+                <thead><tr><th>姓名</th><th>参与项目总数</th><th>已完成项目数</th><th>逾期项目数</th><th>完成率</th></tr></thead>
+                <tbody id="workloadTableBody"><tr><td colspan="5">暂无数据</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+    <footer>✅ 数据实时保存至云端 | 一人修改，全员同步</footer>
+</div>
+
+<!-- 模态框（新增/编辑） -->
+<div id="projectModal" class="modal">
+    <div class="modal-content">
+        <h3 id="modalTitle">新建项目</h3>
+        <form id="projectForm">
+            <input type="hidden" id="editId" value="">
+            <div class="form-group"><label>项目名称 *</label><input type="text" id="projName" required></div>
+            <div class="form-group"><label>负责人 *</label><input type="text" id="leader" placeholder="例：张建国" required></div>
+            <div class="form-group"><label>主要设计师（多人用逗号分隔）*</label><input type="text" id="designer" placeholder="例：李思思,王明远" required></div>
+            <div class="form-group"><label>计划开始日期 *</label><input type="date" id="startDate" required></div>
+            <div class="form-group"><label>计划完成日期 *</label><input type="date" id="endDate" required></div>
+            <div class="form-group"><label>实际完成日期（留空表示未完成）</label><input type="date" id="actualEndDate"></div>
+            <div class="form-group"><label>进度 % (手动微调)</label><input type="number" id="progressPercent" min="0" max="100" value="0" step="5"></div>
+            <div class="form-group"><label>备注</label><textarea id="remarks" rows="2"></textarea></div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-outline" id="closeModalBtn">取消</button>
+                <button type="submit" class="btn btn-primary">保存项目</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // ---------- 配置区域 ----------
+// 这里必须填你自己的Railway完整域名，不要加末尾的/
+const SERVER_URL = 'https://design-project-production.up.railway.app';
+const API_URL = `${SERVER_URL}/api`;
+
+// 连接 Socket.io
+const socket = io(SERVER_URL, {
+    reconnection: true,
+    reconnectionAttempts: 10,
+    timeout: 20000
 });
 
-// 默认演示数据
-const defaultProjects = [
-    { id: '1', projectName: '江东新区城市设计', leader: '张建国', designer: '李思思,王明远', startDate: '2025-01-10', endDate: '2025-04-20', actualEndDate: '', progressPercent: 65, remarks: '方案深化阶段，等待业主确认' },
-    { id: '2', projectName: '滨江景观桥工程', leader: '陈敏华', designer: '赵一航', startDate: '2025-02-01', endDate: '2025-05-15', actualEndDate: '', progressPercent: 30, remarks: '初设阶段，地勘完成' },
-    { id: '3', projectName: '科技园总部基地', leader: '刘子轩', designer: '李思思,周雅', startDate: '2024-12-01', endDate: '2025-03-01', actualEndDate: '2025-02-28', progressPercent: 100, remarks: '提前交付，验收通过' },
-    { id: '4', projectName: '轨道交通枢纽改造', leader: '王宏', designer: '吴启航,林芳', startDate: '2024-10-10', endDate: '2025-02-10', actualEndDate: '', progressPercent: 85, remarks: '收尾阶段，超期风险注意' },
-    { id: '5', projectName: '海绵城市示范区', leader: '陈敏华', designer: '郑秋怡', startDate: '2025-03-01', endDate: '2025-07-20', actualEndDate: '', progressPercent: 20, remarks: '初步设计' }
-];
+    // 全局项目数组
+    let projects = [];
+    let isSaving = false; // 防止重复提交
 
-// 3. API 接口
-// 【首页访问】直接打开域名就跳转到系统页面
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+    // 默认演示数据（仅用于本地兜底）
+    const defaultProjects = [
+        { id: '1', projectName: '示例项目-请点击右上角初始化数据', leader: '无', designer: '无', startDate: '2025-01-01', endDate: '2025-12-31', actualEndDate: '', progressPercent: 0, remarks: '请先确保后端服务已启动' }
+    ];
 
-// 获取所有项目
-app.get('/api/projects', (req, res) => {
-  const projects = db.prepare('SELECT * FROM projects').all();
-  res.json(projects);
-});
-
-// 初始化数据接口
-app.get('/api/init', (req, res) => {
-    const insert = db.prepare(`
-        INSERT OR REPLACE INTO projects (id, projectName, leader, designer, startDate, endDate, actualEndDate, progressPercent, remarks)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    defaultProjects.forEach(p => {
-        insert.run(p.id, p.projectName, p.leader, p.designer, p.startDate, p.endDate, p.actualEndDate, p.progressPercent, p.remarks);
+    // ---------- 网络状态监听 ----------
+    socket.on('connect', () => {
+        console.log('✅ 已连接到服务器');
+        document.getElementById('connectionStatus').classList.remove('offline');
+        loadProjects();
     });
-    io.emit('data-updated');
-    res.json({ success: true, message: "数据初始化成功！返回上一页刷新即可看到项目" });
-});
 
-// 新增/更新项目
-app.post('/api/projects/sync', (req, res) => {
-  const projects = req.body;
-  // 清空旧数据
-  db.prepare('DELETE FROM projects').run();
-  // 批量插入新数据
-  if(projects && projects.length > 0) {
-      const insert = db.prepare(`
-        INSERT INTO projects (id, projectName, leader, designer, startDate, endDate, actualEndDate, progressPercent, remarks)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      projects.forEach(p => {
-        insert.run(p.id, p.projectName, p.leader, p.designer, p.startDate, p.endDate, p.actualEndDate, p.progressPercent, p.remarks);
-      });
-  }
-  // 通知所有客户端数据更新
-  io.emit('data-updated');
-  res.json({ success: true });
-});
+    socket.on('disconnect', () => {
+        console.log('❌ 与服务器断开连接');
+        document.getElementById('connectionStatus').classList.add('offline');
+    });
 
-// 4. 启动服务（适配Railway自动分配的端口）
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ 后端服务已启动，运行端口: ${PORT}`);
-  console.log(`📡 本地访问地址: http://localhost:${PORT}`);
-});
+    // 监听云端数据变化 (别人修改了，我这里自动刷新)
+    socket.on('data-updated', () => {
+        console.log('🔄 检测到数据更新，正在刷新...');
+        if (!isSaving) { // 如果是自己正在保存，就不重复加载
+            loadProjects();
+        }
+    });
+
+    // ---------- 数据操作函数 ----------
+    async function loadProjects() {
+        try {
+            const res = await fetch(`${API_URL}/projects`);
+            const data = await res.json();
+            projects = data;
+            if (projects.length === 0) {
+                document.getElementById('projectTableBody').innerHTML = `
+                    <tr>
+                        <td colspan="10" style="text-align:center; padding: 40px;">
+                            <p style="font-size: 1.2rem; color: #666;">数据库为空</p>
+                            <p>请访问 <code style="background:#eee;padding:2px 6px;">${SERVER_URL}/api/init</code> 初始化演示数据</p>
+                        </td>
+                    </tr>`;
+                return;
+            }
+            renderAll();
+        } catch (e) {
+            console.error('加载失败', e);
+            projects = defaultProjects;
+            renderAll();
+        }
+    }
+
+    // 保存至云端
+    async function saveProjects() {
+        isSaving = true;
+        try {
+            await fetch(`${API_URL}/projects/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(projects)
+            });
+        } catch (e) {
+            console.error('保存失败', e);
+            alert('保存失败，请检查网络连接');
+        } finally {
+            isSaving = false;
+        }
+    }
+
+    // ---------- 以下是原有逻辑 (仅修改了存储调用部分) ----------
+    
+    // 获取当前系统日期 (YYYY-MM-DD)
+    function getTodayDate() {
+        return new Date().toISOString().slice(0,10);
+    }
+
+    // 根据日期和实际完成日计算自动状态
+    function computeAutoStatus(project) {
+        const today = getTodayDate();
+        const actualEnd = project.actualEndDate;
+        if (actualEnd && actualEnd.trim() !== '') {
+            return '已完成';
+        }
+        const endDate = project.endDate;
+        if (!endDate) return '计划中';
+        if (endDate < today) {
+            return '逾期';
+        }
+        const startDate = project.startDate;
+        if (startDate > today) {
+            return '计划中';
+        }
+        return '进行中';
+    }
+
+    function getDisplayProgress(proj) {
+        if (proj.actualEndDate && proj.actualEndDate.trim() !== '') {
+            return 100;
+        }
+        let p = Number(proj.progressPercent);
+        return isNaN(p) ? 0 : p;
+    }
+
+    function renderAll() {
+        renderProjectTable();
+        renderStatsCards();
+        renderWorkloadStats();
+    }
+
+    function renderProjectTable() {
+        const tbody = document.getElementById('projectTableBody');
+        const filterText = document.getElementById('filterInput').value.trim().toLowerCase();
+        let filtered = [...projects];
+        if (filterText) {
+            filtered = projects.filter(p => 
+                (p.projectName && p.projectName.toLowerCase().includes(filterText)) ||
+                (p.leader && p.leader.toLowerCase().includes(filterText)) ||
+                (p.designer && p.designer.toLowerCase().includes(filterText))
+            );
+        }
+        if (filtered.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;">暂无项目数据</td></tr>';
+            return;
+        }
+
+        let html = '';
+        filtered.forEach(proj => {
+            const autoStatus = computeAutoStatus(proj);
+            let rowClass = '';
+            if (autoStatus === '已完成') rowClass = 'row-completed';
+            else if (autoStatus === '逾期') rowClass = 'row-overdue';
+            else if (autoStatus === '进行中') rowClass = 'row-progress';
+            
+            const displayProgress = getDisplayProgress(proj);
+            let statusClass = 'status-badge';
+            if (autoStatus === '已完成') statusClass += ' status-completed';
+            else if (autoStatus === '逾期') statusClass += ' status-overdue';
+            else if (autoStatus === '进行中') statusClass += ' status-progress';
+            else statusClass += ' status-planned';
+            
+            const progressWidth = displayProgress;
+            html += `<tr class="${rowClass}">
+                <td style="font-weight:500;">${escapeHtml(proj.projectName)}</td>
+                <td>${escapeHtml(proj.leader)}</td>
+                <td>${escapeHtml(proj.designer)}</td>
+                <td>${proj.startDate || '-'}</td>
+                <td>${proj.endDate || '-'}</td>
+                <td>${proj.actualEndDate || '-'}</td>
+                <td><span class="${statusClass}">${autoStatus}</span></td>
+                <td class="progress-cell">
+                    <span>${displayProgress}%</span>
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ${progressWidth}%;"></div></div>
+                </td>
+                <td class="remark-cell">${escapeHtml(proj.remarks || '')}</td>
+                <td class="action-btns">
+                    <button class="icon-btn edit" data-id="${proj.id}" title="编辑">✏️</button>
+                    <button class="icon-btn delete" data-id="${proj.id}" title="删除">🗑️</button>
+                </td>
+            </tr>`;
+        });
+        tbody.innerHTML = html;
+
+        document.querySelectorAll('.edit').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = btn.getAttribute('data-id');
+                openEditModal(id);
+            });
+        });
+        document.querySelectorAll('.delete').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = btn.getAttribute('data-id');
+                if (confirm('确定要删除该项目吗？')) {
+                    projects = projects.filter(p => p.id !== id);
+                    saveProjects().then(renderAll);
+                }
+            });
+        });
+    }
+
+    function renderStatsCards() {
+        const total = projects.length;
+        let completed = 0, overdue = 0, inProgress = 0;
+        projects.forEach(p => {
+            const status = computeAutoStatus(p);
+            if (status === '已完成') completed++;
+            else if (status === '逾期') overdue++;
+            else if (status === '进行中') inProgress++;
+        });
+        document.getElementById('totalProjects').innerText = total;
+        document.getElementById('completedProjects').innerText = completed;
+        document.getElementById('overdueProjects').innerText = overdue;
+        document.getElementById('inProgressProjects').innerText = inProgress;
+    }
+
+    function renderWorkloadStats() {
+        const peopleMap = new Map();
+        
+        projects.forEach(proj => {
+            const status = computeAutoStatus(proj);
+            const isCompleted = (status === '已完成');
+            const isOverdue = (status === '逾期');
+            
+            const personSet = new Set();
+            if (proj.leader && proj.leader.trim()) personSet.add(proj.leader.trim());
+            if (proj.designer && proj.designer.trim()) {
+                let designers = proj.designer.split(/[,，]+/).map(s => s.trim()).filter(s => s);
+                designers.forEach(d => personSet.add(d));
+            }
+            
+            personSet.forEach(person => {
+                if (!peopleMap.has(person)) {
+                    peopleMap.set(person, { total:0, completed:0, overdue:0 });
+                }
+                const stat = peopleMap.get(person);
+                stat.total += 1;
+                if (isCompleted) stat.completed += 1;
+                if (isOverdue) stat.overdue += 1;
+            });
+        });
+        
+        let workloadArray = Array.from(peopleMap.entries()).map(([name, stat]) => ({
+            name, total: stat.total, completed: stat.completed, overdue: stat.overdue,
+            completionRate: stat.total === 0 ? 0 : ((stat.completed / stat.total)*100).toFixed(1)
+        }));
+        workloadArray.sort((a,b) => b.total - a.total);
+        
+        const tbody = document.getElementById('workloadTableBody');
+        if (workloadArray.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5">暂无人员数据</td></tr>';
+            return;
+        }
+        let html = '';
+        workloadArray.forEach(w => {
+            html += `<tr>
+                <td><strong>${escapeHtml(w.name)}</strong></td>
+                <td>${w.total}</td>
+                <td>${w.completed}</td>
+                <td>${w.overdue}</td>
+                <td>${w.completionRate}%</td>
+            </tr>`;
+        });
+        tbody.innerHTML = html;
+    }
+
+    let currentEditId = null;
+    function openAddModal() {
+        currentEditId = null;
+        document.getElementById('modalTitle').innerText = '新建项目';
+        document.getElementById('projectForm').reset();
+        document.getElementById('editId').value = '';
+        document.getElementById('actualEndDate').value = '';
+        document.getElementById('progressPercent').value = '0';
+        document.getElementById('remarks').value = '';
+        const today = getTodayDate();
+        document.getElementById('startDate').value = today;
+        let nextMonth = new Date();
+        nextMonth.setMonth(nextMonth.getMonth()+2);
+        let defaultEnd = nextMonth.toISOString().slice(0,10);
+        document.getElementById('endDate').value = defaultEnd;
+        document.getElementById('projName').focus();
+        document.getElementById('projectModal').style.display = 'flex';
+    }
+
+    function openEditModal(id) {
+        const proj = projects.find(p => p.id === id);
+        if (!proj) return;
+        currentEditId = id;
+        document.getElementById('modalTitle').innerText = '编辑项目';
+        document.getElementById('editId').value = id;
+        document.getElementById('projName').value = proj.projectName;
+        document.getElementById('leader').value = proj.leader;
+        document.getElementById('designer').value = proj.designer;
+        document.getElementById('startDate').value = proj.startDate;
+        document.getElementById('endDate').value = proj.endDate;
+        document.getElementById('actualEndDate').value = proj.actualEndDate || '';
+        let prog = proj.progressPercent;
+        if (proj.actualEndDate && proj.actualEndDate !== '') prog = 100;
+        document.getElementById('progressPercent').value = prog;
+        document.getElementById('remarks').value = proj.remarks || '';
+        document.getElementById('projectModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('projectModal').style.display = 'none';
+    }
+
+    async function saveProjectFromForm(e) {
+        e.preventDefault();
+        const name = document.getElementById('projName').value.trim();
+        const leader = document.getElementById('leader').value.trim();
+        const designer = document.getElementById('designer').value.trim();
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        let actualEndDate = document.getElementById('actualEndDate').value;
+        let progressPercent = parseInt(document.getElementById('progressPercent').value, 10);
+        const remarks = document.getElementById('remarks').value;
+        
+        if (!name || !leader || !designer || !startDate || !endDate) {
+            alert('请填写完整信息');
+            return;
+        }
+        if (startDate > endDate) {
+            alert('开始日期不能晚于结束日期');
+            return;
+        }
+        
+        if (actualEndDate && actualEndDate.trim() !== '') {
+            progressPercent = 100;
+        } else {
+            actualEndDate = '';
+        }
+        
+        const editId = document.getElementById('editId').value;
+        if (editId) {
+            const index = projects.findIndex(p => p.id === editId);
+            if (index !== -1) {
+                projects[index] = {
+                    ...projects[index],
+                    projectName: name, leader, designer, startDate, endDate,
+                    actualEndDate: actualEndDate || '', progressPercent, remarks
+                };
+            }
+        } else {
+            const newId = Date.now().toString();
+            projects.push({
+                id: newId, projectName: name, leader, designer, startDate, endDate,
+                actualEndDate: actualEndDate || '', progressPercent, remarks
+            });
+        }
+        
+        closeModal();
+        await saveProjects();
+        renderAll();
+    }
+
+    function exportToCSV() {
+        if (projects.length === 0) { alert('无数据可导出'); return; }
+        let csvRows = [["项目名称","负责人","主要设计师","计划开始","计划完成","实际完成","状态","进度","备注"]];
+        for (let p of projects) {
+            const autoStatus = computeAutoStatus(p);
+            const displayProgress = getDisplayProgress(p);
+            csvRows.push([
+                `"${p.projectName}"`, `"${p.leader}"`, `"${p.designer}"`, p.startDate, p.endDate,
+                p.actualEndDate || '', autoStatus, displayProgress, `"${(p.remarks || '').replace(/"/g, '""')}"`
+            ]);
+        }
+        const csvContent = csvRows.map(row => row.join(",")).join("\n");
+        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.href = url;
+        link.setAttribute("download", "设计院项目进度表.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    function updateDateDisplay() {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth()+1).padStart(2,'0');
+        const dd = String(today.getDate()).padStart(2,'0');
+        const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
+        const weekday = weekdays[today.getDay()];
+        document.getElementById('currentDateDisplay').innerHTML = `📅 ${yyyy}.${mm}.${dd} ${weekday}`;
+    }
+
+    function bindEvents() {
+        document.getElementById('addProjectBtn').addEventListener('click', openAddModal);
+        document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+        document.getElementById('projectModal').addEventListener('click', (e) => { if(e.target === document.getElementById('projectModal')) closeModal(); });
+        document.getElementById('projectForm').addEventListener('submit', saveProjectFromForm);
+        document.getElementById('exportCsvBtn').addEventListener('click', exportToCSV);
+        document.getElementById('filterInput').addEventListener('input', () => renderProjectTable());
+    }
+
+    async function init() {
+        bindEvents();
+        updateDateDisplay();
+        // 数据加载等待 socket 连接后触发
+        setInterval(() => {
+            updateDateDisplay();
+        }, 60000);
+    }
+    init();
+</script>
+</body>
+</html>
