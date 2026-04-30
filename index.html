@@ -45,8 +45,6 @@
         .btn-primary:hover { background-color: #1e5a7a; }
         .btn-outline { background-color: transparent; border: 2px solid var(--secondary); color: var(--secondary); }
         .btn-outline:hover { background-color: rgba(44, 125, 160, 0.1); }
-        .btn-success { background-color: var(--success); color: white; }
-        .btn-success:hover { background-color: #218838; }
         .btn-sm { padding: 6px 12px; font-size: 0.85rem; }
 
         /* 搜索框 */
@@ -69,6 +67,7 @@
         .status-low { background-color: #f8d7da; color: #721c24; }
         .status-gray { background-color: #e9ecef; color: #495057; }
         .status-primary { background-color: #e3f2fd; color: #1565c0; }
+        .status-warning { background-color: #fff3e0; color: #e65100; }
 
         /* 进度条 */
         .progress-bar { width: 100%; height: 8px; background-color: #e0e0e0; border-radius: 4px; overflow: hidden; margin-top: 5px; }
@@ -112,6 +111,7 @@
         .text-center { text-align: center; }
         .fw-bold { font-weight: 600; }
         .text-muted { color: var(--gray); }
+        .extra-mod-tag { background: #fff3e0; color: #e65100; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; margin-left: 8px; }
 
         /* 响应式 */
         @media (max-width: 768px) {
@@ -216,7 +216,7 @@
         </div>
     </div>
 
-    <!-- Tab3：设计师工作量统计（和项目管理强关联） -->
+    <!-- Tab3：设计师工作量统计 -->
     <div class="tab-content" id="designer-stats-tab">
         <div class="toolbar">
             <h2>👨‍💻 设计师工作量明细</h2>
@@ -408,7 +408,7 @@
     </div>
 </div>
 
-<!-- 新增/编辑子项模态框（新增设计师字段，和项目管理关联） -->
+<!-- 新增/编辑子项模态框（新增额外修改字段） -->
 <div class="modal modal-sm" id="phaseModal">
     <div class="modal-content">
         <div class="modal-header">
@@ -439,6 +439,10 @@
             <div class="form-group">
                 <label>子项完成进度 (%) *</label>
                 <input type="number" id="phaseProgress" min="0" max="100" value="0" step="5" required>
+            </div>
+            <div class="form-group">
+                <label>额外修改内容</label>
+                <textarea id="phaseExtraModification" rows="2" placeholder="填写额外修改的内容（选填）"></textarea>
             </div>
             <div class="form-group">
                 <label>子项备注</label>
@@ -504,7 +508,7 @@
         return progress >= 70 ? '#28a745' : progress >= 30 ? '#ffc107' : '#dc3545';
     }
 
-    // 计算项目各阶段进度
+    // 【核心优化】根据子项最新内容智能计算当前阶段
     function calcProjectPhaseStats(projectId) {
         const phases = allPhases.filter(p => p.projectId === projectId);
         // 按阶段分组
@@ -530,17 +534,26 @@
             }
         }
         const totalProgress = totalWeight === 0 ? 0 : Math.round(totalScore / totalWeight);
-        // 判断当前所处阶段
+        
+        // 【核心逻辑】智能判断当前阶段
         let currentStage = "未开始";
-        if (phaseProgress["方案"] < 100 && phaseGroups["方案"].length > 0) {
-            currentStage = "方案阶段";
-        } else if (phaseProgress["方案"] === 100 && phaseProgress["初步设计"] < 100 && phaseGroups["初步设计"].length > 0) {
-            currentStage = "初步设计阶段";
-        } else if (phaseProgress["初步设计"] === 100 && phaseProgress["施工图"] < 100 && phaseGroups["施工图"].length > 0) {
-            currentStage = "施工图阶段";
+        if (phases.length === 0) {
+            currentStage = "未开始";
         } else if (phaseProgress["施工图"] === 100 && phaseGroups["施工图"].length > 0) {
             currentStage = "已完成";
+        } else if (phaseProgress["初步设计"] === 100 && phaseGroups["初步设计"].length > 0 && phaseProgress["施工图"] < 100) {
+            currentStage = "施工图阶段";
+        } else if (phaseProgress["方案"] === 100 && phaseGroups["方案"].length > 0 && phaseProgress["初步设计"] < 100) {
+            currentStage = "初步设计阶段";
+        } else if (phaseProgress["方案"] < 100 && phaseGroups["方案"].length > 0) {
+            currentStage = "方案阶段";
+        } else {
+            // 兜底逻辑：找第一个有进行中子项的阶段
+            if (phaseGroups["方案"].some(p => p.progress > 0 && p.progress < 100)) currentStage = "方案阶段";
+            else if (phaseGroups["初步设计"].some(p => p.progress > 0 && p.progress < 100)) currentStage = "初步设计阶段";
+            else if (phaseGroups["施工图"].some(p => p.progress > 0 && p.progress < 100)) currentStage = "施工图阶段";
         }
+
         return {
             phases,
             phaseGroups,
@@ -626,7 +639,7 @@
         }
     }
 
-    // 渲染阶段详情（新增设计师列）
+    // 渲染阶段详情（显示额外修改）
     function renderPhaseDetail(type, phaseList, progress) {
         const idMap = {
             "方案": { progress: 'planPhaseProgress', bar: 'planPhaseBar', list: 'planPhaseList' },
@@ -644,12 +657,16 @@
             return;
         }
         let html = '<table style="width:100%; border-collapse: collapse;">';
-        html += '<thead><tr style="border-bottom: 1px solid #eee;"><th style="width:30%; padding:8px; text-align:left;">子项名称</th><th style="width:15%; padding:8px; text-align:left;">负责设计师</th><th style="width:20%; padding:8px; text-align:left;">进度</th><th style="width:25%; padding:8px; text-align:left;">备注</th><th style="width:10%; padding:8px; text-align:left;">操作</th></tr></thead>';
+        html += '<thead><tr style="border-bottom: 1px solid #eee;"><th style="width:25%; padding:8px; text-align:left;">子项名称</th><th style="width:12%; padding:8px; text-align:left;">负责设计师</th><th style="width:18%; padding:8px; text-align:left;">进度</th><th style="width:30%; padding:8px; text-align:left;">备注</th><th style="width:15%; padding:8px; text-align:left;">操作</th></tr></thead>';
         html += '<tbody>';
         phaseList.forEach(phase => {
+            const hasExtraMod = phase.extraModification && phase.extraModification.trim() !== '';
             html += `
-            <tr style="border-bottom: 1px solid #f5f5f5;">
-                <td style="padding:8px;">${escapeHtml(phase.phaseName)}</td>
+            <tr style="border-bottom: 1px solid #f5f5f5; ${hasExtraMod ? 'background: #fffbf5;' : ''}">
+                <td style="padding:8px;">
+                    ${escapeHtml(phase.phaseName)}
+                    ${hasExtraMod ? '<span class="extra-mod-tag">有修改</span>' : ''}
+                </td>
                 <td style="padding:8px;"><span class="status-badge status-gray">${escapeHtml(phase.designer || '-')}</span></td>
                 <td style="padding:8px;">
                     <div class="rate-bar">
@@ -659,7 +676,10 @@
                         </div>
                     </div>
                 </td>
-                <td style="padding:8px;" title="${escapeHtml(phase.remarks || '')}">${escapeHtml(phase.remarks || '-')}</td>
+                <td style="padding:8px;" title="${escapeHtml(phase.remarks || '')}">
+                    ${hasExtraMod ? `<div style="color:#e65100; font-size:0.85rem; margin-bottom:4px;"><strong>修改：</strong>${escapeHtml(phase.extraModification)}</div>` : ''}
+                    ${escapeHtml(phase.remarks || '-')}
+                </td>
                 <td style="padding:8px;">
                     <button class="icon-btn" title="编辑子项" onclick="editPhaseInDetail('${phase.id}')">✏️</button>
                     <button class="icon-btn delete" title="删除子项" onclick="deletePhaseInDetail('${phase.id}')">🗑️</button>
@@ -681,6 +701,7 @@
         document.getElementById('phaseDesigner').value = phase.designer || '';
         document.getElementById('phaseName').value = phase.phaseName;
         document.getElementById('phaseProgress').value = phase.progress;
+        document.getElementById('phaseExtraModification').value = phase.extraModification || '';
         document.getElementById('phaseRemarks').value = phase.remarks || '';
         document.getElementById('phaseModal').style.display = 'flex';
     }
@@ -792,7 +813,7 @@
         }
     }
 
-    // 子项保存（含设计师）
+    // 子项保存（含额外修改）
     document.getElementById('phaseForm').addEventListener('submit', async e => {
         e.preventDefault();
         const projectId = document.getElementById('phaseProjectId').value;
@@ -804,6 +825,7 @@
             phaseName: document.getElementById('phaseName').value,
             designer: document.getElementById('phaseDesigner').value.trim(),
             progress: parseInt(document.getElementById('phaseProgress').value),
+            extraModification: document.getElementById('phaseExtraModification').value.trim(),
             remarks: document.getElementById('phaseRemarks').value
         };
         try {
@@ -867,7 +889,7 @@
         } catch (e) { console.error('加载负责人统计失败', e); }
     }
 
-    // 设计师统计渲染（完全来自项目内子项）
+    // 设计师统计渲染
     async function renderDesignerStats() {
         try {
             const data = await (await fetch(`${API_URL}/stats/designer`)).json();
